@@ -25,6 +25,7 @@ import PublicOrder from "@/pages/PublicOrder";
 import TrackOrder from "@/pages/TrackOrder";
 import AdminSettings from "@/pages/AdminSettings";
 import DeliveryDashboard from "@/pages/DeliveryDashboard";
+import SuperAdmin from "@/pages/SuperAdmin";
 import NotFound from "@/pages/not-found";
 import {
   useLiveBillsStream,
@@ -58,6 +59,7 @@ const rolePermissions: Record<string, string[]> = {
   "/contact": ["admin", "counter", "reception", "section", "driver"],
   "/track": ["admin", "counter", "reception", "section", "driver"],
   "/admin-settings": ["admin"],
+  "/super-admin": ["super_admin"],
 };
 
 function ProtectedRoute({ path, component: Component, allowedRoles }: { 
@@ -67,7 +69,7 @@ function ProtectedRoute({ path, component: Component, allowedRoles }: {
 }) {
   const user = useContext(UserContext);
   const userRole = getEffectiveRole(user?.role);
-  
+
   if (!allowedRoles.includes(userRole)) {
     return <Redirect to="/" />;
   }
@@ -78,6 +80,16 @@ function ProtectedRoute({ path, component: Component, allowedRoles }: {
 function Router() {
   const user = useContext(UserContext);
   const userRole = getEffectiveRole(user?.role);
+
+  if (userRole === "super_admin") {
+    return (
+      <Switch>
+        <Route path="/" component={SuperAdmin} />
+        <Route path="/super-admin" component={SuperAdmin} />
+        <Route><Redirect to="/super-admin" /></Route>
+      </Switch>
+    );
+  }
   
   // Driver users should be redirected to delivery dashboard as home
   if (userRole === "driver") {
@@ -265,6 +277,7 @@ function App() {
   const handleLogout = useCallback(() => {
     localStorage.removeItem("isLoggedIn");
     localStorage.removeItem("user");
+    localStorage.removeItem("authToken");
     localStorage.removeItem("lastActivity");
     setIsLoggedIn(false);
     setUser(null);
@@ -284,9 +297,9 @@ function App() {
   const userId = user?.id;
   const userRef = useRef(user);
   userRef.current = user;
-  const canBypassLockdown = user?.role === "admin";
+  const canBypassLockdown = user?.role === "admin" || user?.role === "super_admin";
   const allowLiveStreams =
-    isLoggedIn && (!lockdownStatus?.enabled || canBypassLockdown);
+    isLoggedIn && user?.role !== "super_admin" && (!lockdownStatus?.enabled || canBypassLockdown);
 
   useLiveBillsStream(allowLiveStreams);
   useLiveClientTransactionsStream(allowLiveStreams);

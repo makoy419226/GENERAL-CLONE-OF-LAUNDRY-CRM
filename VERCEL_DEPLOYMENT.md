@@ -20,6 +20,8 @@ Development as appropriate:
 
 - `DATABASE_URL`
 - `SESSION_SECRET`
+- `BUSINESS_SECRETS_KEY`
+- `SUPER_ADMIN_USERNAME`, `SUPER_ADMIN_PASSWORD`, `SUPER_ADMIN_NAME`, and `SUPER_ADMIN_EMAIL`
 - `ADMIN_PASSWORD`
 - `ADMIN_PIN`
 - `ADMIN_EMAIL`
@@ -28,6 +30,9 @@ Development as appropriate:
 
 Use `.env.example` as the complete starting list. Do not add `.env` files to
 Git.
+
+The multi-business account bootstrap and platform-owner variables are described
+in `MULTI_BUSINESS_SETUP.md`.
 
 ## 3. Prepare the schema
 

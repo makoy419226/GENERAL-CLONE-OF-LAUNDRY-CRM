@@ -7,6 +7,11 @@ async function throwIfResNotOk(res: Response) {
   }
 }
 
+function getAuthHeaders(): Record<string, string> {
+  const token = localStorage.getItem("authToken");
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
 export function extractApiErrorMessage(error: unknown, fallback = "Request failed.") {
   const rawMessage =
     error instanceof Error
@@ -46,6 +51,7 @@ export async function apiRequest(
 ): Promise<Response> {
   const requestHeaders = {
     ...(data ? { "Content-Type": "application/json" } : {}),
+    ...getAuthHeaders(),
     ...(init?.headers ?? {}),
   };
   const res = await fetch(url, {
@@ -68,6 +74,7 @@ export const getQueryFn: <T>(options: {
   async ({ queryKey, signal }) => {
     const res = await fetch(queryKey.join("/") as string, {
       credentials: "include",
+      headers: getAuthHeaders(),
       signal,
     });
 

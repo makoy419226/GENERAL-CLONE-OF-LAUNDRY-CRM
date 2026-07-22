@@ -23,8 +23,9 @@ export interface UserInfo {
   username: string;
   role: string;
   name: string;
+  businessId?: number | null;
+  businessName?: string | null;
 }
-
 interface LoginProps {
   onLogin: (user: UserInfo) => void;
 }
@@ -110,6 +111,7 @@ export default function Login({ onLogin }: LoginProps) {
       if (response.ok && data.success) {
         localStorage.setItem("isLoggedIn", "true");
         localStorage.setItem("user", JSON.stringify(data.user));
+        localStorage.setItem("authToken", data.token);
         toast({
           title: `Welcome, ${data.user.name || data.user.username}!`,
           description: `Logged in as ${data.user.role.charAt(0).toUpperCase() + data.user.role.slice(1)}`,
@@ -342,7 +344,7 @@ export default function Login({ onLogin }: LoginProps) {
                     <Button
                       type="button"
                       variant="ghost"
-                      className="text-sm text-muted-foreground"
+                      className="hidden text-sm text-muted-foreground"
                       onClick={() => setShowForgotPassword(true)}
                       data-testid="button-forgot-password"
                     >

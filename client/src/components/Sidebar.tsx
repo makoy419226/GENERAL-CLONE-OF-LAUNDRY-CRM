@@ -1,7 +1,7 @@
 import { useLocation } from "wouter";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
-import { LayoutDashboard, Package, Users, FileText, List, Phone, TrendingUp, LogOut, Shield, UserCog, Wallet, ClipboardList, HardHat, AlertTriangle, Menu, X, Search, Settings, ChevronDown, Truck } from "lucide-react";
+import { LayoutDashboard, Package, Users, FileText, List, Phone, TrendingUp, LogOut, Shield, UserCog, Wallet, ClipboardList, HardHat, AlertTriangle, Menu, X, Search, Settings, ChevronDown, Truck, Building2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { startTransition, useState, useEffect, type MouseEvent } from "react";
 import logoImage from "@assets/image_1767220512226.png";
@@ -11,6 +11,8 @@ interface UserInfo {
   username: string;
   role: string;
   name: string;
+  businessId?: number | null;
+  businessName?: string | null;
 }
 
 interface SidebarProps {
@@ -101,11 +103,19 @@ export function Sidebar({ user, onLogout }: SidebarProps) {
 
   const actualUserRole = user?.role || "counter";
   const userRole = actualUserRole;
+  const isSuperAdmin = visibleLocation === "/super-admin" || (actualUserRole === "super_admin" && visibleLocation === "/");
   const isAdmin = userRole === "admin";
   const isCounter = userRole === "counter";
   const isAdminOrCounter = isAdmin || isCounter;
 
   const navGroups = [
+    {
+      label: "Platform",
+      collapsible: false,
+      items: [
+        { href: "/super-admin", icon: Building2, iconClassName: "border-violet-200 bg-violet-100 text-violet-700 group-hover:bg-violet-200", label: "Businesses & Accounts", active: isSuperAdmin, testId: "nav-super-admin", roles: ["super_admin"] },
+      ]
+    },
     {
       label: "Operations",
       collapsible: false,
@@ -275,7 +285,7 @@ export function Sidebar({ user, onLogout }: SidebarProps) {
           <div className="space-y-3 border-t border-border/70 p-4">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
-                {user.role === "admin" ? (
+                {user.role === "admin" || user.role === "super_admin" ? (
                   <Shield className="w-5 h-5 text-primary" />
                 ) : user.role === "counter" ? (
                   <UserCog className="w-5 h-5 text-primary" />
@@ -286,8 +296,11 @@ export function Sidebar({ user, onLogout }: SidebarProps) {
               <div className="flex-1 min-w-0">
                 <p className="font-semibold text-foreground truncate">{user.name || user.username}</p>
                 <Badge variant="secondary" className="text-xs capitalize">
-                  {user.role === "counter" ? "Counter" : user.role === "section" ? "Section" : user.role}
+                  {user.role === "super_admin" ? "Super Admin" : user.role === "counter" ? "Counter" : user.role === "section" ? "Section" : user.role}
                 </Badge>
+                {user.businessName && (
+                  <p className="mt-1 truncate text-[11px] text-muted-foreground">{user.businessName}</p>
+                )}
               </div>
             </div>
             <div className="flex gap-2">

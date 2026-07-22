@@ -11,6 +11,32 @@ import {
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
+export const laundryBusinesses = pgTable("laundry_businesses", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  slug: text("slug").notNull().unique(),
+  active: boolean("active").notNull().default(true),
+  contactEmail: text("contact_email"),
+  phone: text("phone"),
+  logoUrl: text("logo_url"),
+  smtpHost: text("smtp_host"),
+  smtpPort: integer("smtp_port").default(587),
+  smtpSecure: boolean("smtp_secure").default(false),
+  smtpUser: text("smtp_user"),
+  smtpPasswordEncrypted: text("smtp_password_encrypted"),
+  smtpFrom: text("smtp_from"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const insertLaundryBusinessSchema = createInsertSchema(laundryBusinesses).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type LaundryBusiness = typeof laundryBusinesses.$inferSelect;
+export type InsertLaundryBusiness = z.infer<typeof insertLaundryBusinessSchema>;
+
 export const products = pgTable("products", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
@@ -220,6 +246,7 @@ export const users = pgTable("users", {
   name: text("name"),
   email: text("email"),
   active: boolean("active").default(true),
+  businessId: integer("business_id").references(() => laundryBusinesses.id),
 });
 
 export const passwordResetTokens = pgTable("password_reset_tokens", {

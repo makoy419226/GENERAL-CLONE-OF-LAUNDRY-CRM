@@ -21,6 +21,7 @@ import { z } from "zod";
 import { db } from "./db";
 import {
   users,
+  laundryBusinesses,
   passwordResetTokens,
   stageChecklists,
   packingWorkers,
@@ -39,6 +40,7 @@ import {
   reviews,
 } from "@shared/schema";
 import { eq, and, gt, ne, not, or, desc, sql, inArray } from "drizzle-orm";
+import { createAuthToken, getRequestAuth } from "./authToken";
 import {
   sendAdminPasswordOtpEmail,
   sendUserPasswordResetEmail,
@@ -64,6 +66,8 @@ import {
   formatErrorMessage,
   isDatabaseConnectionError,
 } from "./errorFormatting";
+import { ensureMultiTenantFoundation } from "./multiTenant";
+import { encryptBusinessSecret } from "./businessSecrets";
 
 type TrackingPaymentStatus = "all" | "paid" | "unpaid";
 type TrackingSortOrder = "newest" | "oldest";
@@ -1522,6 +1526,13 @@ export async function registerRoutes(
     }
 
     try {
+      await ensureMultiTenantFoundation();
+    } catch (err) {
+      logStartupMigrationError("Multi-business foundation migration error", err);
+      return;
+    }
+
+    try {
       await seedDatabase();
     } catch (err) {
       logStartupMigrationError("Seed error", err);
@@ -2224,6 +2235,8 @@ export async function registerRoutes(
     const { username, password } = req.body;
     const normalizedUsername = String(username || "").trim();
 
+    await ensureMultiTenantFoundation();
+
     const [user] = await db
       .select()
       .from(users)
@@ -2237,7 +2250,7 @@ export async function registerRoutes(
 
     if (user) {
       const lockdownStatus = await getAppLockdownStatus();
-      if (lockdownStatus.enabled && user.role !== "admin") {
+      if (lockdownStatus.enabled && user.role !== "admin" && user.role !== "super_admin") {
         return res.status(423).json({
           success: false,
           locked: true,
@@ -2245,20 +2258,326 @@ export async function registerRoutes(
         });
       }
 
+      const business = user.businessId
+        ? await db
+            .select()
+            .from(laundryBusinesses)
+            .where(eq(laundryBusinesses.id, user.businessId))
+            .then((rows) => rows[0] || null)
+        : null;
+      if (business && !business.active) {
+        return res.status(403).json({
+          success: false,
+          message: "This business account is currently suspended",
+        });
+      }
+      const token = createAuthToken({
+        userId: user.id,
+        username: user.username,
+        role: user.role,
+        businessId: user.businessId || null,
+      });
+
       res.json({
         success: true,
         message: "Login successful",
+        token,
         user: {
           id: user.id,
           username: user.username,
           role: user.role,
           name: user.name,
+          businessId: user.businessId || null,
+          businessName: business?.name || null,
         },
       });
     } else {
       res
         .status(401)
         .json({ success: false, message: "Invalid username or password" });
+    }
+  });
+
+  const requireSuperAdmin = (req: Request, res: ExpressResponse) => {
+    const auth = getRequestAuth(req);
+    if (!auth) {
+      res.status(401).json({ message: "Sign in as the platform owner to continue" });
+      return null;
+    }
+    if (auth.role !== "super_admin") {
+      res.status(403).json({ message: "Super administrator access is required" });
+      return null;
+    }
+    return auth;
+  };
+
+  const createBusinessInputSchema = z.object({
+    name: z.string().trim().min(2, "Business name is required").max(120),
+    slug: z
+      .string()
+      .trim()
+      .min(2, "Business slug is required")
+      .max(80)
+      .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, "Use lowercase letters, numbers, and hyphens"),
+    contactEmail: z.string().trim().email().optional().or(z.literal("")),
+    phone: z.string().trim().max(40).optional().or(z.literal("")),
+    adminName: z.string().trim().min(2, "Administrator name is required").max(120),
+    adminUsername: z
+      .string()
+      .trim()
+      .min(3, "Administrator username must have at least 3 characters")
+      .max(80)
+      .regex(/^[A-Za-z0-9._-]+$/, "Use letters, numbers, dots, underscores, or hyphens"),
+    adminPassword: z.string().min(8, "Administrator password must have at least 8 characters").max(200),
+  });
+
+  const updateBusinessInputSchema = z.object({
+    name: z.string().trim().min(2).max(120),
+    contactEmail: z.string().trim().email().optional().or(z.literal("")),
+    phone: z.string().trim().max(40).optional().or(z.literal("")),
+    adminName: z.string().trim().min(2).max(120),
+    adminUsername: z.string().trim().min(3).max(80).regex(/^[A-Za-z0-9._-]+$/),
+    adminPassword: z.string().min(8).max(200).optional().or(z.literal("")),
+    smtpHost: z.string().trim().max(255).optional().or(z.literal("")),
+    smtpPort: z.coerce.number().int().min(1).max(65535).default(587),
+    smtpSecure: z.boolean().default(false),
+    smtpUser: z.string().trim().max(255).optional().or(z.literal("")),
+    smtpPassword: z.string().max(500).optional().or(z.literal("")),
+    smtpFrom: z.string().trim().max(255).optional().or(z.literal("")),
+  });
+
+  const serializeManagedBusiness = (
+    business: typeof laundryBusinesses.$inferSelect,
+  ) => ({
+    id: business.id,
+    name: business.name,
+    slug: business.slug,
+    active: business.active,
+    contactEmail: business.contactEmail,
+    phone: business.phone,
+    logoUrl: business.logoUrl,
+    smtpConfigured: Boolean(business.smtpHost && business.smtpUser),
+    smtpHost: business.smtpHost,
+    smtpPort: business.smtpPort,
+    smtpSecure: business.smtpSecure,
+    smtpUser: business.smtpUser,
+    smtpFrom: business.smtpFrom,
+    smtpPasswordSet: Boolean(business.smtpPasswordEncrypted),
+    createdAt: business.createdAt,
+    updatedAt: business.updatedAt,
+  });
+
+  app.get("/api/super-admin/businesses", async (req, res) => {
+    if (!requireSuperAdmin(req, res)) return;
+    await ensureMultiTenantFoundation();
+
+    const businessRows = await db
+      .select()
+      .from(laundryBusinesses)
+      .orderBy(desc(laundryBusinesses.createdAt));
+    const accountRows = await db
+      .select({
+        id: users.id,
+        username: users.username,
+        name: users.name,
+        email: users.email,
+        role: users.role,
+        active: users.active,
+        businessId: users.businessId,
+      })
+      .from(users)
+      .orderBy(users.username);
+
+    res.json({
+      businesses: businessRows.map((business) => {
+        const businessAccounts = accountRows.filter(
+          (account) => account.businessId === business.id,
+        );
+        const administrator = businessAccounts.find(
+          (account) => account.role === "admin",
+        );
+        return {
+          ...serializeManagedBusiness(business),
+          accountCount: businessAccounts.length,
+          administrator: administrator || null,
+        };
+      }),
+      accounts: accountRows,
+    });
+  });
+
+  app.post("/api/super-admin/businesses", async (req, res) => {
+    if (!requireSuperAdmin(req, res)) return;
+    await ensureMultiTenantFoundation();
+
+    const parsed = createBusinessInputSchema.safeParse(req.body || {});
+    if (!parsed.success) {
+      return res.status(400).json({
+        message: parsed.error.issues[0]?.message || "Choose valid business and administrator details",
+      });
+    }
+
+    try {
+      const created = await db.transaction(async (tx) => {
+        const [business] = await tx
+          .insert(laundryBusinesses)
+          .values({
+            name: parsed.data.name,
+            slug: parsed.data.slug,
+            contactEmail: parsed.data.contactEmail || null,
+            phone: parsed.data.phone || null,
+          })
+          .returning();
+
+        const [administrator] = await tx
+          .insert(users)
+          .values({
+            username: parsed.data.adminUsername,
+            password: parsed.data.adminPassword,
+            role: "admin",
+            name: parsed.data.adminName,
+            email: parsed.data.contactEmail || null,
+            pin: "00000",
+            active: true,
+            businessId: business.id,
+          })
+          .returning({
+            id: users.id,
+            username: users.username,
+            name: users.name,
+            email: users.email,
+            role: users.role,
+            active: users.active,
+            businessId: users.businessId,
+          });
+
+        return { business, administrator };
+      });
+
+      res.status(201).json({
+        message: `${created.business.name} and its administrator account were created`,
+        business: created.business,
+        administrator: created.administrator,
+      });
+    } catch (error) {
+      const message = formatErrorMessage(error);
+      if (/unique|duplicate/i.test(message)) {
+        return res.status(409).json({
+          message: "That business slug or administrator username is already in use",
+        });
+      }
+      res.status(500).json({ message: "Failed to create the business account" });
+    }
+  });
+
+  app.patch("/api/super-admin/businesses/:id/status", async (req, res) => {
+    if (!requireSuperAdmin(req, res)) return;
+    const businessId = Number(req.params.id);
+    const active = req.body?.active;
+    if (!Number.isInteger(businessId) || typeof active !== "boolean") {
+      return res.status(400).json({ message: "Choose a valid business status" });
+    }
+
+    const [business] = await db
+      .update(laundryBusinesses)
+      .set({ active, updatedAt: new Date() })
+      .where(eq(laundryBusinesses.id, businessId))
+      .returning();
+
+    if (!business) {
+      return res.status(404).json({ message: "Business not found" });
+    }
+
+    res.json({
+      message: `${business.name} is now ${active ? "active" : "suspended"}`,
+      business: serializeManagedBusiness(business),
+    });
+  });
+
+  app.put("/api/super-admin/businesses/:id", async (req, res) => {
+    if (!requireSuperAdmin(req, res)) return;
+    const businessId = Number(req.params.id);
+    if (!Number.isInteger(businessId)) {
+      return res.status(400).json({ message: "Choose a valid business" });
+    }
+
+    const parsed = updateBusinessInputSchema.safeParse(req.body || {});
+    if (!parsed.success) {
+      return res.status(400).json({
+        message: parsed.error.issues[0]?.message || "Choose valid account and SMTP settings",
+      });
+    }
+
+    try {
+      const result = await db.transaction(async (tx) => {
+        const smtpPasswordUpdate = parsed.data.smtpPassword
+          ? { smtpPasswordEncrypted: encryptBusinessSecret(parsed.data.smtpPassword) }
+          : {};
+        const [business] = await tx
+          .update(laundryBusinesses)
+          .set({
+            name: parsed.data.name,
+            contactEmail: parsed.data.contactEmail || null,
+            phone: parsed.data.phone || null,
+            smtpHost: parsed.data.smtpHost || null,
+            smtpPort: parsed.data.smtpPort,
+            smtpSecure: parsed.data.smtpSecure,
+            smtpUser: parsed.data.smtpUser || null,
+            smtpFrom: parsed.data.smtpFrom || null,
+            ...smtpPasswordUpdate,
+            updatedAt: new Date(),
+          })
+          .where(eq(laundryBusinesses.id, businessId))
+          .returning();
+
+        if (!business) throw new Error("Business not found");
+
+        const [administrator] = await tx
+          .select()
+          .from(users)
+          .where(and(eq(users.businessId, businessId), eq(users.role, "admin")))
+          .limit(1);
+        if (!administrator) throw new Error("Business administrator not found");
+
+        const [updatedAdministrator] = await tx
+          .update(users)
+          .set({
+            name: parsed.data.adminName,
+            username: parsed.data.adminUsername,
+            email: parsed.data.contactEmail || null,
+            ...(parsed.data.adminPassword ? { password: parsed.data.adminPassword } : {}),
+          })
+          .where(eq(users.id, administrator.id))
+          .returning({
+            id: users.id,
+            username: users.username,
+            name: users.name,
+            email: users.email,
+            role: users.role,
+            active: users.active,
+            businessId: users.businessId,
+          });
+
+        return { business, administrator: updatedAdministrator };
+      });
+
+      forceLogoutUsers.add(result.administrator.id);
+      sendForceLogoutToUser(result.administrator.id);
+
+      res.json({
+        message: `${result.business.name} account settings were updated`,
+        business: serializeManagedBusiness(result.business),
+        administrator: result.administrator,
+      });
+    } catch (error) {
+      const message = formatErrorMessage(error);
+      if (/unique|duplicate/i.test(message)) {
+        return res.status(409).json({ message: "That administrator username is already in use" });
+      }
+      if (/not found/i.test(message)) {
+        return res.status(404).json({ message });
+      }
+      res.status(500).json({ message: "Failed to update the business account" });
     }
   });
 
@@ -2282,6 +2601,12 @@ export async function registerRoutes(
       return res
         .status(404)
         .json({ success: false, message: "No user found with this email" });
+    }
+    if (user.businessId) {
+      return res.status(403).json({
+        success: false,
+        message: "Business account credentials are managed by the super administrator",
+      });
     }
 
     const resetCode = Math.floor(100000 + Math.random() * 900000).toString();
@@ -2347,6 +2672,12 @@ export async function registerRoutes(
         .status(404)
         .json({ success: false, message: "User not found" });
     }
+    if (user.businessId) {
+      return res.status(403).json({
+        success: false,
+        message: "Business account credentials are managed by the super administrator",
+      });
+    }
 
     const [token] = await db
       .select()
@@ -2391,6 +2722,12 @@ export async function registerRoutes(
       return res
         .status(404)
         .json({ success: false, message: "User not found" });
+    }
+    if (user.businessId) {
+      return res.status(403).json({
+        success: false,
+        message: "Business account credentials are managed by the super administrator",
+      });
     }
 
     const [token] = await db
@@ -9417,27 +9754,42 @@ export async function registerRoutes(
 
   // Get admin account settings
   app.get("/api/admin/account", async (req, res) => {
-    const adminUser = await storage.getUserByUsername("admin");
+    const auth = getRequestAuth(req);
+    if (!auth) {
+      return res.status(401).json({ message: "Sign in to view this account" });
+    }
 
-    // Get values from database user first, fallback to env vars
-    const adminUsername = adminUser?.username || process.env.ADMIN_USERNAME || "admin";
-    const adminName = adminUser?.name || process.env.ADMIN_NAME || adminUsername;
-    const adminEmail = adminUser?.email || process.env.ADMIN_EMAIL || "idusma0010@gmail.com";
-    const adminPassword = adminUser?.password || process.env.ADMIN_PASSWORD || "admin123";
-    const adminPin = adminUser?.pin || process.env.ADMIN_PIN || "";
+    const [account] = await db
+      .select({
+        username: users.username,
+        name: users.name,
+        email: users.email,
+        pin: users.pin,
+      })
+      .from(users)
+      .where(eq(users.id, auth.userId))
+      .limit(1);
+
+    if (!account) {
+      return res.status(404).json({ message: "Account not found" });
+    }
 
     res.json({
-      username: adminUsername,
-      name: adminName,
-      email: adminEmail,
-      password: adminPassword,
-      pin: adminPin,
-      hasPin: !!adminPin
+      username: account.username,
+      name: account.name || account.username,
+      email: account.email || "",
+      hasPin: Boolean(account.pin),
     });
   });
 
   // Update admin account settings (display name, email, and PIN - requires current password)
   app.put("/api/admin/account", async (req, res) => {
+    return res.status(403).json({
+      success: false,
+      message: "Business account settings are managed by the super administrator",
+    });
+
+    /* Business self-service is intentionally disabled.
     const { currentPassword, name, email, pin } = req.body;
 
     // Get admin user from database to verify password
@@ -9485,10 +9837,17 @@ export async function registerRoutes(
       console.error("Error updating admin settings:", error);
       res.status(500).json({ success: false, message: "Failed to update admin settings" });
     }
+    */
   });
 
   // Send OTP to admin email for password change
   app.post("/api/admin/send-password-otp", async (req, res) => {
+    return res.status(403).json({
+      success: false,
+      message: "Business passwords are managed by the super administrator",
+    });
+
+    /* Email OTP self-service is intentionally disabled.
     const adminUser = await storage.getUserByUsername("admin");
     const adminEmail = adminUser?.email || process.env.ADMIN_EMAIL || "idusma0010@gmail.com";
 
@@ -9517,10 +9876,17 @@ export async function registerRoutes(
             : "Failed to send OTP email",
       });
     }
+    */
   });
 
   // Verify OTP and change admin password
   app.post("/api/admin/change-password-with-otp", async (req, res) => {
+    return res.status(403).json({
+      success: false,
+      message: "Business passwords are managed by the super administrator",
+    });
+
+    /* Email OTP self-service is intentionally disabled.
     const { otp, newPassword } = req.body;
 
     if (!otp || !newPassword) {
@@ -9567,6 +9933,7 @@ export async function registerRoutes(
       console.error("Failed to update password:", error);
       res.status(500).json({ success: false, message: "Failed to update password" });
     }
+    */
   });
 
   // Get admin email dynamically from database for reports
@@ -9654,6 +10021,7 @@ export async function registerRoutes(
 
   // Send daily sales report (admin protected)
   app.post("/api/admin/send-daily-report", async (req, res) => {
+    if (!requireSuperAdmin(req, res)) return;
     const { adminPassword, date } = req.body;
     const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "admin123";
 
@@ -9683,11 +10051,13 @@ export async function registerRoutes(
 
   // Get admin report email setting (dynamic from database)
   app.get("/api/admin/report-email", async (req, res) => {
+    if (!requireSuperAdmin(req, res)) return;
     const email = await getAdminReportEmail();
     res.json({ email });
   });
 
   app.get("/api/admin/report-schedule", async (_req, res) => {
+    if (!requireSuperAdmin(_req, res)) return;
     try {
       const settings = await storage.getSalesReportScheduleSettings();
       res.json(settings);
@@ -9697,6 +10067,7 @@ export async function registerRoutes(
   });
 
   app.put("/api/admin/report-schedule", async (req, res) => {
+    if (!requireSuperAdmin(req, res)) return;
     const { adminPassword, ...scheduleInput } = req.body || {};
 
     if (!(await verifyAdminPassword(String(adminPassword || "")))) {
@@ -9785,6 +10156,7 @@ export async function registerRoutes(
 
   // Send periodic sales report (admin protected)
   app.post("/api/admin/send-report", async (req, res) => {
+    if (!requireSuperAdmin(req, res)) return;
     const { adminPassword, period } = req.body;
     const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "admin123";
 

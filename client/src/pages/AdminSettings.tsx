@@ -574,7 +574,7 @@ export default function AdminSettings() {
   const { toast } = useToast();
 
   // Fetch admin account settings
-  const { data: adminAccount } = useQuery<{ username: string; name: string; email: string; pin: string; password: string; hasPin: boolean }>({
+  const { data: adminAccount } = useQuery<{ username: string; name: string; email: string; pin?: string; password?: string; hasPin: boolean }>({
     queryKey: ["/api/admin/account"],
   });
   const { data: lockdownStatus } = useQuery<AppLockdownStatus>({
@@ -586,6 +586,7 @@ export default function AdminSettings() {
   });
   const { data: reportSchedule } = useQuery<SalesReportScheduleSettings>({
     queryKey: ["/api/admin/report-schedule"],
+    enabled: false,
   });
   const companyContact = normalizeCompanyContactInfo(companyContactData);
 
@@ -1344,7 +1345,7 @@ export default function AdminSettings() {
               Admin Account
             </CardTitle>
             <CardDescription>
-              Manage your admin account settings including username, display name, email, password, and PIN.
+              View your assigned business administrator account.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -1372,38 +1373,15 @@ export default function AdminSettings() {
                     {adminAccount?.email || "idusma0010@gmail.com"}
                   </p>
                 </div>
-                <div>
-                  <p className="text-xs text-muted-foreground mb-1">Password</p>
-                  <div className="font-medium flex items-center gap-2">
-                    <Lock className="w-4 h-4 text-muted-foreground" />
-                    <span className="font-mono">
-                      {showAdminPassword ? (adminAccount?.password || "admin123") : "••••••••"}
-                    </span>
-                    <Button size="icon" variant="ghost" className="h-6 w-6" onClick={() => setShowAdminPassword(!showAdminPassword)}>
-                      {showAdminPassword ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
-                    </Button>
-                  </div>
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground mb-1">PIN</p>
-                  <div className="font-medium flex items-center gap-2">
-                    <Key className="w-4 h-4 text-muted-foreground" />
-                    <span className="font-mono">
-                      {adminAccount?.hasPin 
-                        ? (showAdminPin ? adminAccount?.pin : "••••") 
-                        : "Not set"}
-                    </span>
-                    {adminAccount?.hasPin && (
-                      <Button size="icon" variant="ghost" className="h-6 w-6" onClick={() => setShowAdminPin(!showAdminPin)}>
-                        {showAdminPin ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
-                      </Button>
-                    )}
-                  </div>
-                </div>
+              </div>
+
+              <div className="rounded-lg border border-primary/20 bg-primary/5 p-4 text-sm">
+                <p className="font-semibold text-foreground">Managed by the super administrator</p>
+                <p className="mt-1 text-muted-foreground">Username, password, and SMTP settings can only be changed from the platform-owner dashboard.</p>
               </div>
 
               {/* Action Buttons */}
-              <div className="flex flex-wrap gap-2">
+              <div className="hidden flex-wrap gap-2">
                 <Button
                   variant="outline"
                   className="gap-2"
@@ -2295,7 +2273,7 @@ export default function AdminSettings() {
           </CardContent>
         </Card>
 
-        <Card className="mt-6">
+        <Card className="hidden">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-amber-600 dark:text-amber-400">
               <CalendarRange className="w-5 h-5" />
@@ -2574,7 +2552,7 @@ export default function AdminSettings() {
           </CardContent>
         </Card>
 
-        <Card className="mt-6">
+        <Card className="hidden">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-orange-600 dark:text-orange-400">
               <Shield className="w-5 h-5" />
