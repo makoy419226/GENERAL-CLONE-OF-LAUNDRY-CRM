@@ -13,7 +13,7 @@
     "db:push": "node ./scripts/npm-runner.cjs",
     "db:studio": "node ./scripts/npm-runner.cjs",
     "bills:backfill-missing-links": "tsx scripts/backfill-missing-linked-bills.ts",
-    "admin:reset": "tsx scripts/addmanregulator.ts",
+    "super-admin:reset": "tsx scripts/addmanregulator.ts",
     "clients:cleanup-zero-phones": "tsx scripts/cleanup-zero-client-phones.ts",
     "clients:migrate-details": "tsx scripts/migrate-client-details.ts",
     "credit:migrate": "tsx scripts/migrate-credit-management.ts",

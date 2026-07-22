@@ -279,6 +279,12 @@ function App() {
   };
 
   const handleLogout = useCallback(() => {
+    void fetch("/api/auth/logout", {
+      method: "POST",
+      credentials: "include",
+    }).catch(() => {
+      // Local logout must still complete if the server is unavailable.
+    });
     localStorage.removeItem("isLoggedIn");
     localStorage.removeItem("user");
     localStorage.removeItem("authToken");
@@ -348,10 +354,7 @@ function App() {
       try {
         const response = await fetch("/api/auth/heartbeat", {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ userId: currentUser.id, username: currentUser.username }),
+          credentials: "include",
         });
 
         resetAuthNetworkBackoff();
@@ -394,7 +397,7 @@ function App() {
     const connect = () => {
       if (closed || document.hidden || isAuthNetworkInCooldown()) return;
 
-      eventSource = new EventSource(`/api/auth/logout-stream?userId=${userId}`);
+      eventSource = new EventSource("/api/auth/logout-stream");
 
       eventSource.onopen = () => {
         resetAuthNetworkBackoff();

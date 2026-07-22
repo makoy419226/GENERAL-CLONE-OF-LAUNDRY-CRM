@@ -1,8 +1,7 @@
 import { db } from "./db";
-import { products, clients, users, packingWorkers, bills } from "@shared/schema";
+import { clients, users, bills } from "@shared/schema";
 import { storage } from "./storage";
 import { eq } from "drizzle-orm";
-import bcrypt from "bcryptjs";
 import { normalizePhoneForStorage, stripPhoneToDigits } from "@shared/phone";
 
 const laundryItems = [
@@ -682,56 +681,6 @@ export async function seedDatabase() {
       `Products already seeded: ${existingProducts.length} items found.`,
     );
   }
-
-
-  // Seed default users if none exist
-  const existingUsers = await db.select().from(users);
-  if (existingUsers.length === 0) {
-    console.log("Seeding default users...");
-
-    const defaultUsers = [
-      {
-        username: "admin",
-        password: "admin123",
-        role: "admin",
-        name: "Administrator",
-        pin: "00000",
-        active: true,
-      },
-      {
-        username: "counter1",
-        password: "counter123",
-        role: "counter",
-        name: "CounterUsername",
-        pin: "11111",
-        active: true,
-      },
-      {
-        username: "section1",
-        password: "section123",
-        role: "section",
-        name: "SectionUsername",
-        pin: "22222",
-        active: true,
-      },
-      {
-        username: "driver1",
-        password: "driver123",
-        role: "driver",
-        name: "DriverUsername",
-        pin: "33333",
-        active: true,
-      },
-    ];
-
-    for (const user of defaultUsers) {
-      await db.insert(users).values(user);
-    }
-    console.log("Default users created: admin, counter1, section1, driver1");
-  }
-
-  // No default packing workers - staff users handle packing by default
-  
   // Normalize legacy phone numbers into international format, using UAE +971 by default
   await migratePhoneNumbers();
   
@@ -898,42 +847,6 @@ async function migrateCategories() {
     console.log("Category migration skipped or error:", error);
   }
 }
-
-// Export default users for reset functionality
-export const defaultUsers = [
-  {
-    username: "admin",
-    password: "admin123",
-    role: "admin",
-    name: "Administrator",
-    pin: "00000",
-    active: true,
-  },
-  {
-    username: "counter1",
-    password: "counter123",
-    role: "counter",
-    name: "CounterUsername",
-    pin: "11111",
-    active: true,
-  },
-  {
-    username: "section1",
-    password: "section123",
-    role: "section",
-    name: "SectionUsername",
-    pin: "22222",
-    active: true,
-  },
-  {
-    username: "driver1",
-    password: "driver123",
-    role: "driver",
-    name: "DriverUsername",
-    pin: "33333",
-    active: true,
-  },
-];
 
 async function migrateClientNamesToUppercase() {
   try {

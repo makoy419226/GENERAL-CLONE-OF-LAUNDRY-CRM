@@ -49,6 +49,7 @@ export default function Lockdown({ status, onAdminLogin }: LockdownProps) {
       const response = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({ username, password, portal: "tenant" }),
       });
       const data = await response.json();

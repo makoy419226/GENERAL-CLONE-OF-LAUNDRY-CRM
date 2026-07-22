@@ -16,11 +16,21 @@ import {
   ServerCog,
   ShieldAlert,
   ShieldCheck,
+  Trash2,
   UserPlus,
   Users,
 } from "lucide-react";
 import { apiRequest, extractApiErrorMessage, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import {
+  AlertDialog,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -85,7 +95,7 @@ type PlatformOverview = {
 
 type ConsoleSection = "overview" | "tenants" | "accounts" | "email";
 type TenantStatusFilter = "all" | "active" | "suspended";
-type ManageTab = "profile" | "administrator" | "email";
+type ManageTab = "profile" | "accounts" | "administrator" | "email";
 
 const BUSINESS_TYPES = [
   { value: "laundry", label: "Laundry services" },
@@ -264,11 +274,15 @@ export default function SuperAdmin() {
   const [tenantSearch, setTenantSearch] = useState("");
   const [tenantStatus, setTenantStatus] = useState<TenantStatusFilter>("all");
   const [accountSearch, setAccountSearch] = useState("");
-  const [accountTenantFilter, setAccountTenantFilter] = useState("all");
   const [accountDialogOpen, setAccountDialogOpen] = useState(false);
+  const [accountBusinessLocked, setAccountBusinessLocked] = useState(false);
+  const [accountReturnBusinessId, setAccountReturnBusinessId] = useState<number | null>(null);
   const [accountToEdit, setAccountToEdit] = useState<PlatformAccount | null>(null);
+  const [accountToDelete, setAccountToDelete] = useState<PlatformAccount | null>(null);
   const [accountForm, setAccountForm] = useState(EMPTY_ACCOUNT_FORM);
   const [accountError, setAccountError] = useState("");
+  const [businessToDelete, setBusinessToDelete] = useState<ManagedBusiness | null>(null);
+  const [businessDeleteConfirmation, setBusinessDeleteConfirmation] = useState("");
 
   const { data, isLoading, error, refetch, isFetching } = useQuery<PlatformOverview>({
     queryKey: ["/api/super-admin/businesses"],
@@ -277,10 +291,6 @@ export default function SuperAdmin() {
   const businesses = data?.businesses || [];
   const accounts = data?.accounts || [];
   const tenantAccounts = accounts.filter((account) => account.businessId !== null);
-  const businessNames = useMemo(
-    () => new Map(businesses.map((business) => [business.id, business.name])),
-    [businesses],
-  );
 
   const filteredBusinesses = useMemo(() => {
     const query = tenantSearch.trim().toLowerCase();
@@ -301,20 +311,45 @@ export default function SuperAdmin() {
     });
   }, [businesses, tenantSearch, tenantStatus]);
 
-  const filteredAccounts = useMemo(() => {
+  const groupedAccounts = useMemo(() => {
     const query = accountSearch.trim().toLowerCase();
-    return tenantAccounts.filter((account) => {
-      const tenantMatches =
-        accountTenantFilter === "all" ||
-        account.businessId === Number(accountTenantFilter);
-      const searchMatches =
-        !query ||
-        [account.name || "", account.username, account.email || "", account.role].some(
-          (value) => value.toLowerCase().includes(query),
+    return businesses
+      .map((business) => {
+        const businessAccounts = tenantAccounts.filter(
+          (account) => account.businessId === business.id,
         );
-      return tenantMatches && searchMatches;
-    });
-  }, [accountSearch, accountTenantFilter, tenantAccounts]);
+        const businessMatches =
+          !query ||
+          [business.name, business.slug, business.administrator?.username || ""].some(
+            (value) => value.toLowerCase().includes(query),
+          );
+        const matchingAccounts = businessMatches
+          ? businessAccounts
+          : businessAccounts.filter((account) =>
+              [account.name || "", account.username, account.email || "", account.role].some(
+                (value) => value.toLowerCase().includes(query),
+              ),
+            );
+
+        return {
+          business,
+          accounts: matchingAccounts,
+          businessMatches,
+          totalAccountCount: businessAccounts.length,
+        };
+      })
+      .filter(({ accounts: matchingAccounts, businessMatches }) =>
+        !query || businessMatches || matchingAccounts.length > 0,
+      );
+  }, [accountSearch, businesses, tenantAccounts]);
+
+  const managedBusinessAccounts = useMemo(
+    () =>
+      businessToEdit
+        ? tenantAccounts.filter((account) => account.businessId === businessToEdit.id)
+        : [],
+    [businessToEdit, tenantAccounts],
+  );
 
   const createTenant = useMutation({
     mutationFn: async () => {
@@ -425,6 +460,62 @@ export default function SuperAdmin() {
     },
   });
 
+  const deleteAccount = useMutation({
+    mutationFn: async (account: PlatformAccount) => {
+      const response = await apiRequest(
+        "DELETE",
+        `/api/super-admin/accounts/${account.id}`,
+      );
+      return response.status === 204
+        ? { message: `${account.name || account.username} was deleted.` }
+        : response.json();
+    },
+    onSuccess: (result, deletedAccount) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/super-admin/businesses"] });
+      setAccountToDelete(null);
+      closeAccountDialog();
+      toast({
+        title: "Account deleted",
+        description: result.message || `${deletedAccount.name || deletedAccount.username} was deleted.`,
+      });
+    },
+    onError: (mutationError) => {
+      toast({
+        title: "Account deletion failed",
+        description: extractApiErrorMessage(mutationError),
+        variant: "destructive",
+      });
+    },
+  });
+
+  const deleteBusiness = useMutation({
+    mutationFn: async (business: ManagedBusiness) => {
+      const response = await apiRequest(
+        "DELETE",
+        `/api/super-admin/businesses/${business.id}`,
+      );
+      return response.status === 204
+        ? { message: `${business.name} was deleted.` }
+        : response.json();
+    },
+    onSuccess: (result, deletedBusiness) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/super-admin/businesses"] });
+      setBusinessToDelete(null);
+      setBusinessDeleteConfirmation("");
+      toast({
+        title: "Business deleted",
+        description: result.message || `${deletedBusiness.name} was deleted.`,
+      });
+    },
+    onError: (mutationError) => {
+      toast({
+        title: "Business deletion failed",
+        description: extractApiErrorMessage(mutationError),
+        variant: "destructive",
+      });
+    },
+  });
+
   const updateTenantForm = (field: keyof typeof EMPTY_TENANT_FORM, value: string) => {
     setTenantFormError("");
     setTenantForm((current) => {
@@ -465,15 +556,25 @@ export default function SuperAdmin() {
     });
   };
 
-  const openNewAccountDialog = (businessId = "") => {
+  const openNewAccountDialog = (businessId = "", returnToBusiness = false) => {
+    setAccountReturnBusinessId(
+      returnToBusiness && businessId ? Number(businessId) : null,
+    );
+    if (returnToBusiness) setBusinessToEdit(null);
     setAccountToEdit(null);
+    setAccountBusinessLocked(Boolean(businessId));
     setAccountForm({ ...EMPTY_ACCOUNT_FORM, businessId });
     setAccountError("");
     setAccountDialogOpen(true);
   };
 
-  const openAccountEditor = (account: PlatformAccount) => {
+  const openAccountEditor = (account: PlatformAccount, returnToBusiness = false) => {
+    setAccountReturnBusinessId(
+      returnToBusiness && account.businessId !== null ? account.businessId : null,
+    );
+    if (returnToBusiness) setBusinessToEdit(null);
     setAccountToEdit(account);
+    setAccountBusinessLocked(true);
     setAccountForm({
       businessId: String(account.businessId || ""),
       name: account.name || "",
@@ -488,10 +589,49 @@ export default function SuperAdmin() {
   };
 
   const closeAccountDialog = () => {
+    const businessToRestore = accountReturnBusinessId === null
+      ? null
+      : businesses.find((business) => business.id === accountReturnBusinessId) || null;
+
     setAccountDialogOpen(false);
+    setAccountBusinessLocked(false);
+    setAccountReturnBusinessId(null);
     setAccountToEdit(null);
     setAccountForm(EMPTY_ACCOUNT_FORM);
     setAccountError("");
+
+    if (businessToRestore) {
+      setManageTab("accounts");
+      setBusinessToEdit(businessToRestore);
+    }
+  };
+
+  const requestDeleteAccount = () => {
+    if (!accountToEdit) return;
+    setAccountToDelete(accountToEdit);
+    setAccountDialogOpen(false);
+  };
+
+  const cancelDeleteAccount = () => {
+    if (deleteAccount.isPending) return;
+    setAccountToDelete(null);
+    setAccountDialogOpen(true);
+  };
+
+  const requestDeleteBusiness = () => {
+    if (!businessToEdit) return;
+    setBusinessToDelete(businessToEdit);
+    setBusinessDeleteConfirmation("");
+    setBusinessToEdit(null);
+  };
+
+  const cancelDeleteBusiness = () => {
+    if (deleteBusiness.isPending || !businessToDelete) return;
+    const businessToRestore = businessToDelete;
+    setBusinessToDelete(null);
+    setBusinessDeleteConfirmation("");
+    setManageTab("profile");
+    setBusinessToEdit(businessToRestore);
   };
 
   const canCreateTenant =
@@ -677,43 +817,29 @@ export default function SuperAdmin() {
       {section === "accounts" && (
         <>
           <SectionHeading
-            title="Tenant accounts"
-            description="Provision users, assign tenant roles, reset credentials, and revoke access."
-            action={<Button className="h-11 gap-2" onClick={() => openNewAccountDialog()} disabled={!businesses.length}><UserPlus className="h-4 w-4" />Add account</Button>}
+            title="Accounts by business"
+            description="Each business keeps its own users, roles, credentials, and access controls."
           />
           <Card>
             <CardHeader>
-              <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_16rem]">
-                <SearchField value={accountSearch} onChange={setAccountSearch} placeholder="Search name, username, email, or role" />
-                <Select value={accountTenantFilter} onValueChange={setAccountTenantFilter}>
-                  <SelectTrigger className="h-11"><SelectValue placeholder="Tenant" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All tenants</SelectItem>
-                    {businesses.map((business) => <SelectItem key={business.id} value={String(business.id)}>{business.name}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </div>
+              <SearchField value={accountSearch} onChange={setAccountSearch} placeholder="Search a business, user, username, email, or role" />
             </CardHeader>
             <CardContent>
-              {filteredAccounts.length === 0 ? (
-                <EmptySearch message={tenantAccounts.length ? "No accounts match these filters." : "No tenant accounts have been created."} />
+              {groupedAccounts.length === 0 ? (
+                <EmptySearch message={businesses.length ? "No businesses or accounts match this search." : "Create a business before adding accounts."} />
               ) : (
-                <div className="overflow-x-auto">
-                  <Table>
-                    <TableHeader><TableRow><TableHead>Account</TableHead><TableHead>Tenant</TableHead><TableHead>Role</TableHead><TableHead>Contact</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Manage</TableHead></TableRow></TableHeader>
-                    <TableBody>
-                      {filteredAccounts.map((account) => (
-                        <TableRow key={account.id}>
-                          <TableCell><p className="font-medium">{account.name || account.username}</p><p className="text-xs text-muted-foreground">{account.username}</p></TableCell>
-                          <TableCell>{account.businessId ? businessNames.get(account.businessId) || "Unknown tenant" : "Platform"}</TableCell>
-                          <TableCell><Badge variant="secondary">{formatLabel(account.role)}</Badge></TableCell>
-                          <TableCell>{account.email || "—"}</TableCell>
-                          <TableCell>{account.active ? <span className="inline-flex items-center gap-1.5 text-emerald-700 dark:text-emerald-400"><CheckCircle2 className="h-4 w-4" />Active</span> : <span className="inline-flex items-center gap-1.5 text-muted-foreground"><CircleOff className="h-4 w-4" />Inactive</span>}</TableCell>
-                          <TableCell className="text-right"><Button variant="outline" size="sm" className="h-10 gap-2" onClick={() => openAccountEditor(account)}><Pencil className="h-3.5 w-3.5" />Edit</Button></TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
+                <div className="space-y-4">
+                  {groupedAccounts.map(({ business, accounts: businessAccounts, totalAccountCount }) => (
+                    <BusinessAccountsCard
+                      key={business.id}
+                      business={business}
+                      accounts={businessAccounts}
+                      totalAccountCount={totalAccountCount}
+                      onAddAccount={() => openNewAccountDialog(String(business.id))}
+                      onEditAccount={openAccountEditor}
+                      onManageBusiness={() => openTenantEditor(business, "accounts")}
+                    />
+                  ))}
                 </div>
               )}
             </CardContent>
@@ -768,12 +894,16 @@ export default function SuperAdmin() {
 
       <ManageTenantDialog
         business={businessToEdit}
+        accounts={managedBusinessAccounts}
         tab={manageTab}
         setTab={setManageTab}
         form={editForm}
         updateForm={updateEditForm}
         error={editError}
         pending={updateTenant.isPending}
+        onAddAccount={() => businessToEdit && openNewAccountDialog(String(businessToEdit.id), true)}
+        onEditAccount={(account) => openAccountEditor(account, true)}
+        onRequestDelete={requestDeleteBusiness}
         onClose={() => setBusinessToEdit(null)}
         onSave={() => updateTenant.mutate()}
       />
@@ -781,6 +911,7 @@ export default function SuperAdmin() {
       <AccountDialog
         open={accountDialogOpen}
         account={accountToEdit}
+        businessLocked={accountBusinessLocked}
         businesses={businesses}
         form={accountForm}
         setForm={setAccountForm}
@@ -788,8 +919,86 @@ export default function SuperAdmin() {
         pending={saveAccount.isPending}
         canSave={canSaveAccount}
         onOpenChange={(open) => open ? setAccountDialogOpen(true) : closeAccountDialog()}
+        onRequestDelete={requestDeleteAccount}
         onSave={() => saveAccount.mutate()}
       />
+
+      <AlertDialog
+        open={Boolean(accountToDelete)}
+        onOpenChange={(open) => { if (!open) cancelDeleteAccount(); }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              Delete {accountToDelete?.name || accountToDelete?.username || "this account"}?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              The login {accountToDelete?.username || "for this user"} will be permanently removed from {businesses.find((business) => business.id === accountToDelete?.businessId)?.name || "this business"}, immediately revoking its access. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="h-11" disabled={deleteAccount.isPending}>Keep account</AlertDialogCancel>
+            <Button
+              type="button"
+              variant="destructive"
+              className="h-11 gap-2"
+              disabled={!accountToDelete || deleteAccount.isPending}
+              onClick={() => accountToDelete && deleteAccount.mutate(accountToDelete)}
+            >
+              {deleteAccount.isPending
+                ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                : <Trash2 className="h-4 w-4" aria-hidden="true" />}
+              Delete account
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog
+        open={Boolean(businessToDelete)}
+        onOpenChange={(open) => { if (!open) cancelDeleteBusiness(); }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete {businessToDelete?.name || "this business"}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This permanently deletes the business, its accounts, and its tenant data. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="space-y-2">
+            <Label htmlFor="delete-business-confirmation">
+              Type <span className="font-semibold text-foreground">{businessToDelete?.name}</span> to confirm
+            </Label>
+            <Input
+              id="delete-business-confirmation"
+              className="h-11"
+              value={businessDeleteConfirmation}
+              onChange={(event) => setBusinessDeleteConfirmation(event.target.value)}
+              autoComplete="off"
+              autoFocus
+            />
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="h-11" disabled={deleteBusiness.isPending}>Keep business</AlertDialogCancel>
+            <Button
+              type="button"
+              variant="destructive"
+              className="h-11 gap-2"
+              disabled={
+                !businessToDelete ||
+                businessDeleteConfirmation !== businessToDelete.name ||
+                deleteBusiness.isPending
+              }
+              onClick={() => businessToDelete && deleteBusiness.mutate(businessToDelete)}
+            >
+              {deleteBusiness.isPending
+                ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                : <Trash2 className="h-4 w-4" aria-hidden="true" />}
+              Permanently delete business
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
@@ -812,6 +1021,109 @@ function EmptySearch({ message }: { message: string }) {
 
 function EmptyTenants({ onCreate }: { onCreate: () => void }) {
   return <div className="rounded-xl border border-dashed p-10 text-center"><Building2 className="mx-auto mb-3 h-8 w-8 text-muted-foreground" /><p className="font-medium">No tenants yet</p><p className="mt-1 text-sm text-muted-foreground">Create the first organization and administrator account.</p><Button className="mt-4 h-11 gap-2" onClick={onCreate}><Plus className="h-4 w-4" />Create tenant</Button></div>;
+}
+
+function TenantAccountList({
+  accounts,
+  onEditAccount,
+  emptyMessage = "No accounts have been created for this business.",
+}: {
+  accounts: PlatformAccount[];
+  onEditAccount: (account: PlatformAccount) => void;
+  emptyMessage?: string;
+}) {
+  if (accounts.length === 0) {
+    return (
+      <div className="rounded-lg border border-dashed p-6 text-center">
+        <Users className="mx-auto mb-2 h-6 w-6 text-muted-foreground" aria-hidden="true" />
+        <p className="text-sm font-medium">{emptyMessage}</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-2">
+      {accounts.map((account) => (
+        <div
+          key={account.id}
+          className="grid gap-3 rounded-lg border p-3 transition-colors hover:bg-muted/40 sm:grid-cols-[minmax(0,1.25fr)_minmax(8rem,0.75fr)_auto] sm:items-center"
+        >
+          <div className="min-w-0">
+            <p className="truncate font-medium">{account.name || account.username}</p>
+            <p className="truncate text-xs text-muted-foreground">{account.username}</p>
+            {account.email && <p className="mt-1 break-all text-xs text-muted-foreground">{account.email}</p>}
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge variant="secondary">{formatLabel(account.role)}</Badge>
+            {account.active ? (
+              <span className="inline-flex items-center gap-1.5 text-sm text-emerald-700 dark:text-emerald-400">
+                <CheckCircle2 className="h-4 w-4" aria-hidden="true" />Active
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1.5 text-sm text-muted-foreground">
+                <CircleOff className="h-4 w-4" aria-hidden="true" />Inactive
+              </span>
+            )}
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-11 gap-2 sm:min-w-24"
+            onClick={() => onEditAccount(account)}
+          >
+            <Pencil className="h-3.5 w-3.5" aria-hidden="true" />Edit
+          </Button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function BusinessAccountsCard({
+  business,
+  accounts,
+  totalAccountCount,
+  onAddAccount,
+  onEditAccount,
+  onManageBusiness,
+}: {
+  business: ManagedBusiness;
+  accounts: PlatformAccount[];
+  totalAccountCount: number;
+  onAddAccount: () => void;
+  onEditAccount: (account: PlatformAccount) => void;
+  onManageBusiness: () => void;
+}) {
+  return (
+    <Card className="shadow-none">
+      <CardHeader className="gap-4 border-b sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <CardTitle className="truncate text-lg">{business.name}</CardTitle>
+            <Badge variant={business.active ? "default" : "secondary"}>
+              {business.active ? "Active" : "Suspended"}
+            </Badge>
+          </div>
+          <CardDescription className="mt-1">
+            {business.slug} · {accounts.length === totalAccountCount
+              ? `${totalAccountCount} ${totalAccountCount === 1 ? "account" : "accounts"}`
+              : `${accounts.length} of ${totalAccountCount} accounts shown`}
+          </CardDescription>
+        </div>
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <Button variant="outline" className="h-11 gap-2" onClick={onManageBusiness}>
+            <Building2 className="h-4 w-4" aria-hidden="true" />Business controls
+          </Button>
+          <Button className="h-11 gap-2" onClick={onAddAccount}>
+            <UserPlus className="h-4 w-4" aria-hidden="true" />Add account
+          </Button>
+        </div>
+      </CardHeader>
+      <CardContent className="pt-4">
+        <TenantAccountList accounts={accounts} onEditAccount={onEditAccount} />
+      </CardContent>
+    </Card>
+  );
 }
 
 type TenantForm = typeof EMPTY_TENANT_FORM;
@@ -843,14 +1155,42 @@ function CreateTenantDialog({ open, onOpenChange, form, updateForm, setSlugTouch
 
 type EditForm = typeof EMPTY_EDIT_FORM;
 
-function ManageTenantDialog({ business, tab, setTab, form, updateForm, error, pending, onClose, onSave }: { business: ManagedBusiness | null; tab: ManageTab; setTab: (tab: ManageTab) => void; form: EditForm; updateForm: (field: keyof EditForm, value: string | boolean) => void; error: string; pending: boolean; onClose: () => void; onSave: () => void }) {
+function ManageTenantDialog({
+  business,
+  accounts,
+  tab,
+  setTab,
+  form,
+  updateForm,
+  error,
+  pending,
+  onAddAccount,
+  onEditAccount,
+  onRequestDelete,
+  onClose,
+  onSave,
+}: {
+  business: ManagedBusiness | null;
+  accounts: PlatformAccount[];
+  tab: ManageTab;
+  setTab: (tab: ManageTab) => void;
+  form: EditForm;
+  updateForm: (field: keyof EditForm, value: string | boolean) => void;
+  error: string;
+  pending: boolean;
+  onAddAccount: () => void;
+  onEditAccount: (account: PlatformAccount) => void;
+  onRequestDelete: () => void;
+  onClose: () => void;
+  onSave: () => void;
+}) {
   const canSave = form.name.trim().length >= 2 && form.adminName.trim().length >= 2 && form.adminUsername.trim().length >= 3 && (form.adminPassword.length === 0 || form.adminPassword.length >= 8);
   return (
     <Dialog open={Boolean(business)} onOpenChange={(open) => { if (!open) onClose(); }}>
-      <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-3xl">
-        <DialogHeader><DialogTitle>Manage {business?.name || "tenant"}</DialogTitle><DialogDescription>Update the organization profile, primary administrator, and platform-managed email connection.</DialogDescription></DialogHeader>
+      <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-4xl">
+        <DialogHeader><DialogTitle>Manage {business?.name || "tenant"}</DialogTitle><DialogDescription>All business controls stay together: profile, tenant accounts, administrator access, and email.</DialogDescription></DialogHeader>
         <Tabs value={tab} onValueChange={(value) => setTab(value as ManageTab)}>
-          <TabsList className="grid h-auto w-full grid-cols-3"><TabsTrigger className="min-h-11" value="profile">Profile</TabsTrigger><TabsTrigger className="min-h-11" value="administrator">Administrator</TabsTrigger><TabsTrigger className="min-h-11" value="email">Email</TabsTrigger></TabsList>
+          <TabsList className="grid h-auto w-full grid-cols-2 sm:grid-cols-4"><TabsTrigger className="min-h-11" value="profile">Profile</TabsTrigger><TabsTrigger className="min-h-11" value="accounts">Accounts</TabsTrigger><TabsTrigger className="min-h-11" value="administrator">Administrator</TabsTrigger><TabsTrigger className="min-h-11" value="email">Email</TabsTrigger></TabsList>
           <TabsContent value="profile" className="grid gap-5 py-4 sm:grid-cols-2">
             <div className="space-y-2 sm:col-span-2"><Label htmlFor="edit-tenant-name">Organization name</Label><Input id="edit-tenant-name" className="h-11" value={form.name} onChange={(event) => updateForm("name", event.target.value)} /></div>
             <div className="space-y-2"><Label>Business type</Label><Select value={form.businessType} onValueChange={(value) => updateForm("businessType", value)}><SelectTrigger className="h-11"><SelectValue /></SelectTrigger><SelectContent>{BUSINESS_TYPES.map((item) => <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>)}</SelectContent></Select></div>
@@ -858,6 +1198,27 @@ function ManageTenantDialog({ business, tab, setTab, form, updateForm, error, pe
             <div className="space-y-2"><Label>Timezone</Label><Select value={form.timezone} onValueChange={(value) => updateForm("timezone", value)}><SelectTrigger className="h-11"><SelectValue /></SelectTrigger><SelectContent>{TIMEZONES.map((value) => <SelectItem key={value} value={value}>{value}</SelectItem>)}</SelectContent></Select></div>
             <div className="space-y-2"><Label htmlFor="edit-tenant-phone">Phone</Label><Input id="edit-tenant-phone" className="h-11" type="tel" value={form.phone} onChange={(event) => updateForm("phone", event.target.value)} /></div>
             <div className="space-y-2 sm:col-span-2"><Label htmlFor="edit-tenant-email">Contact email</Label><Input id="edit-tenant-email" className="h-11" type="email" value={form.contactEmail} onChange={(event) => updateForm("contactEmail", event.target.value)} /></div>
+            <div className="flex flex-col gap-3 rounded-lg border border-destructive/30 bg-destructive/5 p-4 sm:col-span-2 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="font-semibold text-destructive">Delete business</p>
+                <p className="text-sm text-muted-foreground">Permanently remove this business and all tenant-scoped accounts and data.</p>
+              </div>
+              <Button type="button" variant="destructive" className="h-11 shrink-0 gap-2" onClick={onRequestDelete}>
+                <Trash2 className="h-4 w-4" aria-hidden="true" />Delete business
+              </Button>
+            </div>
+          </TabsContent>
+          <TabsContent value="accounts" className="space-y-4 py-4">
+            <div className="flex flex-col gap-3 rounded-lg border bg-muted/30 p-4 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="font-semibold">Business accounts</p>
+                <p className="text-sm text-muted-foreground">Only users assigned to {business?.name || "this business"} are shown here.</p>
+              </div>
+              <Button className="h-11 gap-2" onClick={onAddAccount}>
+                <UserPlus className="h-4 w-4" aria-hidden="true" />Add account
+              </Button>
+            </div>
+            <TenantAccountList accounts={accounts} onEditAccount={onEditAccount} />
           </TabsContent>
           <TabsContent value="administrator" className="grid gap-5 py-4 sm:grid-cols-2">
             <div className="rounded-lg border border-primary/20 bg-primary/5 p-3 text-sm sm:col-span-2">Business administrators cannot change these credentials themselves. Saving changes signs the account out.</div>
@@ -876,7 +1237,10 @@ function ManageTenantDialog({ business, tab, setTab, form, updateForm, error, pe
           </TabsContent>
         </Tabs>
         {error && <p className="text-sm text-destructive" role="alert">{error}</p>}
-        <DialogFooter><Button variant="outline" className="h-11" onClick={onClose}>Cancel</Button><Button className="h-11" onClick={onSave} disabled={!canSave || pending}>{pending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Save changes</Button></DialogFooter>
+        <DialogFooter>
+          <Button variant="outline" className="h-11" onClick={onClose}>{tab === "accounts" ? "Close" : "Cancel"}</Button>
+          {tab !== "accounts" && <Button className="h-11" onClick={onSave} disabled={!canSave || pending}>{pending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Save changes</Button>}
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   );
@@ -884,14 +1248,14 @@ function ManageTenantDialog({ business, tab, setTab, form, updateForm, error, pe
 
 type AccountForm = typeof EMPTY_ACCOUNT_FORM;
 
-function AccountDialog({ open, account, businesses, form, setForm, error, pending, canSave, onOpenChange, onSave }: { open: boolean; account: PlatformAccount | null; businesses: ManagedBusiness[]; form: AccountForm; setForm: React.Dispatch<React.SetStateAction<AccountForm>>; error: string; pending: boolean; canSave: boolean; onOpenChange: (open: boolean) => void; onSave: () => void }) {
+function AccountDialog({ open, account, businessLocked, businesses, form, setForm, error, pending, canSave, onOpenChange, onRequestDelete, onSave }: { open: boolean; account: PlatformAccount | null; businessLocked: boolean; businesses: ManagedBusiness[]; form: AccountForm; setForm: React.Dispatch<React.SetStateAction<AccountForm>>; error: string; pending: boolean; canSave: boolean; onOpenChange: (open: boolean) => void; onRequestDelete: () => void; onSave: () => void }) {
   const update = (field: keyof AccountForm, value: string | boolean) => setForm((current) => ({ ...current, [field]: value }));
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-xl">
         <DialogHeader><DialogTitle>{account ? "Manage tenant account" : "Create tenant account"}</DialogTitle><DialogDescription>{account ? "Update role, credentials, or account access. Saving signs this user out." : "Provision a user inside one tenant organization."}</DialogDescription></DialogHeader>
         <div className="grid gap-5 py-2 sm:grid-cols-2">
-          <div className="space-y-2 sm:col-span-2"><Label>Tenant organization</Label><Select value={form.businessId} onValueChange={(value) => update("businessId", value)} disabled={Boolean(account)}><SelectTrigger className="h-11"><SelectValue placeholder="Choose a tenant" /></SelectTrigger><SelectContent>{businesses.map((business) => <SelectItem key={business.id} value={String(business.id)}>{business.name}</SelectItem>)}</SelectContent></Select></div>
+          <div className="space-y-2 sm:col-span-2"><Label>Tenant organization</Label><Select value={form.businessId} onValueChange={(value) => update("businessId", value)} disabled={Boolean(account) || businessLocked}><SelectTrigger className="h-11"><SelectValue placeholder="Choose a tenant" /></SelectTrigger><SelectContent>{businesses.map((business) => <SelectItem key={business.id} value={String(business.id)}>{business.name}</SelectItem>)}</SelectContent></Select></div>
           <div className="space-y-2"><Label htmlFor="account-name">Display name</Label><Input id="account-name" className="h-11" value={form.name} onChange={(event) => update("name", event.target.value)} /></div>
           <div className="space-y-2"><Label htmlFor="account-username">Login username</Label><Input id="account-username" className="h-11" value={form.username} onChange={(event) => update("username", event.target.value)} autoComplete="off" /></div>
           <div className="space-y-2"><Label htmlFor="account-email">Email</Label><Input id="account-email" className="h-11" type="email" value={form.email} onChange={(event) => update("email", event.target.value)} /></div>
@@ -900,7 +1264,17 @@ function AccountDialog({ open, account, businesses, form, setForm, error, pendin
           <div className="flex min-h-14 items-center justify-between rounded-lg border p-3 sm:col-span-2"><div><Label htmlFor="account-active">Account access</Label><p className="text-xs text-muted-foreground">Inactive users cannot sign in.</p></div><Switch id="account-active" checked={form.active} onCheckedChange={(checked) => update("active", checked)} /></div>
         </div>
         {error && <p className="text-sm text-destructive" role="alert">{error}</p>}
-        <DialogFooter><Button variant="outline" className="h-11" onClick={() => onOpenChange(false)}>Cancel</Button><Button className="h-11" onClick={onSave} disabled={!canSave || pending}>{pending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}{account ? "Save account" : "Create account"}</Button></DialogFooter>
+        <div className="flex flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-between">
+          {account ? (
+            <Button type="button" variant="destructive" className="h-11 gap-2" onClick={onRequestDelete} disabled={pending}>
+              <Trash2 className="h-4 w-4" aria-hidden="true" />Delete account
+            </Button>
+          ) : <span />}
+          <div className="flex flex-col-reverse gap-2 sm:flex-row">
+            <Button variant="outline" className="h-11" onClick={() => onOpenChange(false)}>Cancel</Button>
+            <Button className="h-11" onClick={onSave} disabled={!canSave || pending}>{pending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}{account ? "Save account" : "Create account"}</Button>
+          </div>
+        </div>
       </DialogContent>
     </Dialog>
   );

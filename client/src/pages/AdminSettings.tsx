@@ -488,7 +488,7 @@ export default function AdminSettings() {
       const storedUser = localStorage.getItem("user");
       if (!storedUser) return "";
       const parsedUser = JSON.parse(storedUser);
-      if (parsedUser?.username !== "admin") return "";
+      if (parsedUser?.role !== "admin") return "";
       return String(parsedUser?.name || "").trim();
     } catch {
       return "";
@@ -551,11 +551,6 @@ export default function AdminSettings() {
   const [logoutAllPassword, setLogoutAllPassword] = useState("");
   const [logoutAllError, setLogoutAllError] = useState("");
   
-  // Reset users to defaults state
-  const [showResetUsersDialog, setShowResetUsersDialog] = useState(false);
-  const [resetUsersPassword, setResetUsersPassword] = useState("");
-  const [resetUsersError, setResetUsersError] = useState("");
-
   // Periodic order deletion state
   const [showPeriodicDeleteDialog, setShowPeriodicDeleteDialog] = useState(false);
   const [periodicDeletePassword, setPeriodicDeletePassword] = useState("");
@@ -598,7 +593,7 @@ export default function AdminSettings() {
       storedAdminName ||
       queriedName ||
       adminAccount?.username ||
-      "Administrator";
+      "";
 
     setAdminDisplayName(nextDisplayName);
   }, [adminAccount?.name, adminAccount?.username]);
@@ -894,29 +889,6 @@ export default function AdminSettings() {
     },
   });
 
-  const resetUsersMutation = useMutation({
-    mutationFn: async (password: string) => {
-      const res = await apiRequest("POST", "/api/admin/reset-users", { adminPassword: password });
-      return res.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/users"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/packing-workers"] });
-      
-      setShowResetUsersDialog(false);
-      setResetUsersPassword("");
-      setResetUsersError("");
-      
-      toast({
-        title: "Users Reset Complete",
-        description: "All users have been reset to defaults: reception1, staff1, driver1.",
-      });
-    },
-    onError: (error: any) => {
-      setResetUsersError(error.message?.includes("Invalid") ? "Invalid admin password" : "Failed to reset users");
-    },
-  });
-
   const deleteOrdersByPeriodMutation = useMutation({
     mutationFn: async ({
       pin,
@@ -1063,7 +1035,7 @@ export default function AdminSettings() {
     selectedResetSummary.push("All clients and any remaining client bills or transactions");
   }
   if (effectiveResetSelections.staff) {
-    selectedResetSummary.push("All non-admin users, packing workers, and staff members");
+    selectedResetSummary.push("All packing workers and staff member records; login accounts stay active");
   }
 
   const hasResetSelection = selectedResetSummary.length > 0;
@@ -1222,7 +1194,7 @@ export default function AdminSettings() {
         (current:
           | { username: string; name: string; email: string; pin: string; password: string; hasPin: boolean }
           | undefined) => ({
-          username: data?.settings?.username || current?.username || "admin",
+          username: data?.settings?.username || current?.username || "",
           name: data?.settings?.name || variables.name.trim(),
           email: data?.settings?.email ?? variables.email,
           pin: variables.pin ? variables.pin : (current?.pin || ""),
@@ -1235,7 +1207,7 @@ export default function AdminSettings() {
       if (storedUser) {
         try {
           const parsedUser = JSON.parse(storedUser);
-          if (parsedUser?.username === "admin") {
+          if (parsedUser?.role === "admin") {
             localStorage.setItem("user", JSON.stringify({ ...parsedUser, name: variables.name.trim() }));
           }
         } catch {
@@ -1304,7 +1276,7 @@ export default function AdminSettings() {
 
   const handleEditAccountOpen = () => {
     if (adminAccount) {
-      setEditName(adminDisplayName || adminAccount.name || adminAccount.username || "admin");
+      setEditName(adminDisplayName || adminAccount.name || adminAccount.username || "");
       setEditEmail(adminAccount.email);
       setEditPin("");
       setEditPassword("");
@@ -1356,21 +1328,21 @@ export default function AdminSettings() {
                   <p className="text-xs text-muted-foreground mb-1">Display Name</p>
                   <p className="font-medium flex items-center gap-2">
                     <User className="w-4 h-4 text-muted-foreground" />
-                    {adminDisplayName || adminAccount?.name || adminAccount?.username || "Administrator"}
+                    {adminDisplayName || adminAccount?.name || adminAccount?.username || "Not configured"}
                   </p>
                 </div>
                 <div>
                   <p className="text-xs text-muted-foreground mb-1">Username</p>
                   <p className="font-medium flex items-center gap-2">
                     <User className="w-4 h-4 text-muted-foreground" />
-                    {adminAccount?.username || "admin"}
+                    {adminAccount?.username || "Not configured"}
                   </p>
                 </div>
                 <div>
                   <p className="text-xs text-muted-foreground mb-1">Email</p>
                   <p className="font-medium flex items-center gap-2">
                     <Mail className="w-4 h-4 text-muted-foreground" />
-                    {adminAccount?.email || "idusma0010@gmail.com"}
+                    {adminAccount?.email || "Not configured"}
                   </p>
                 </div>
               </div>
@@ -1426,7 +1398,7 @@ export default function AdminSettings() {
                     <Label htmlFor="fixed-username">Username</Label>
                     <Input
                       id="fixed-username"
-                      value={adminAccount?.username || "admin"}
+                      value={adminAccount?.username || ""}
                       disabled
                       className="bg-muted"
                       data-testid="input-fixed-admin-username"
@@ -1550,7 +1522,7 @@ export default function AdminSettings() {
                       <Mail className="w-12 h-12 mx-auto text-primary mb-4" />
                       <p className="text-sm text-muted-foreground mb-4">
                         Click below to send a one-time password to<br />
-                        <span className="font-medium">{adminAccount?.email || "idusma0010@gmail.com"}</span>
+                        <span className="font-medium">{adminAccount?.email || "Not configured"}</span>
                       </p>
                       <Button
                         onClick={() => sendOtpMutation.mutate()}
@@ -2043,86 +2015,6 @@ export default function AdminSettings() {
           </CardHeader>
           <CardContent>
             <div className="flex flex-wrap gap-3">
-              <Dialog open={showResetUsersDialog} onOpenChange={(open) => {
-                setShowResetUsersDialog(open);
-                if (!open) {
-                  setResetUsersPassword("");
-                  setResetUsersError("");
-                }
-              }}>
-                <DialogTrigger asChild>
-                  <Button
-                    variant="outline"
-                    className="w-full sm:w-auto gap-2 border-orange-500 text-orange-600 hover:bg-orange-50 dark:hover:bg-orange-900/20"
-                    data-testid="button-reset-users"
-                  >
-                    <RotateCcw className="w-5 h-5" />
-                    Reset Default Users
-                  </Button>
-                </DialogTrigger>
-                <DialogContent aria-describedby={undefined} className="max-w-md max-h-[85vh] overflow-y-auto">
-                  <DialogHeader>
-                    <DialogTitle className="flex items-center gap-2 text-orange-600">
-                      <RotateCcw className="w-5 h-5" />
-                      Reset Users to Defaults
-                    </DialogTitle>
-                    <DialogDescription>
-                      This will reset all user accounts to defaults:
-                      <ul className="list-disc list-inside mt-2 space-y-1">
-                        <li>reception1 (PIN: 11111)</li>
-                        <li>staff1 (PIN: 22222)</li>
-                        <li>driver1 (PIN: 33333)</li>
-                      </ul>
-                      <p className="mt-3 text-muted-foreground">Admin account will be preserved.</p>
-                    </DialogDescription>
-                  </DialogHeader>
-                  <div className="space-y-4 py-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="reset-users-password">Admin Password</Label>
-                      <Input
-                        id="reset-users-password"
-                        type="password"
-                        placeholder="Enter admin password..."
-                        value={resetUsersPassword}
-                        onChange={(e) => {
-                          setResetUsersPassword(e.target.value);
-                          setResetUsersError("");
-                        }}
-                        data-testid="input-reset-users-password"
-                      />
-                      {resetUsersError && (
-                        <p className="text-sm text-destructive">{resetUsersError}</p>
-                      )}
-                    </div>
-                  </div>
-                  <DialogFooter className="gap-2">
-                    <Button
-                      variant="outline"
-                      onClick={() => {
-                        setShowResetUsersDialog(false);
-                        setResetUsersPassword("");
-                        setResetUsersError("");
-                      }}
-                    >
-                      Cancel
-                    </Button>
-                    <Button
-                      className="bg-orange-600 hover:bg-orange-700"
-                      onClick={() => resetUsersMutation.mutate(resetUsersPassword)}
-                      disabled={!resetUsersPassword || resetUsersMutation.isPending}
-                      data-testid="button-confirm-reset-users"
-                    >
-                      {resetUsersMutation.isPending ? (
-                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                      ) : (
-                        <RotateCcw className="w-4 h-4 mr-2" />
-                      )}
-                      Reset Users
-                    </Button>
-                  </DialogFooter>
-                </DialogContent>
-              </Dialog>
-
               <Dialog open={showResetDialog} onOpenChange={(open) => {
                 setShowResetDialog(open);
                 if (!open) {
@@ -2206,9 +2098,9 @@ export default function AdminSettings() {
                           data-testid="checkbox-delete-staff"
                         />
                         <div className="space-y-1">
-                          <p className="text-sm font-medium text-foreground">Delete all staff</p>
+                          <p className="text-sm font-medium text-foreground">Delete staff records</p>
                           <p className="text-xs text-muted-foreground">
-                            Removes all non-admin user accounts, packing workers, and staff member records. The admin account stays.
+                            Removes packing workers and staff member records. Login accounts are always preserved.
                           </p>
                         </div>
                       </label>

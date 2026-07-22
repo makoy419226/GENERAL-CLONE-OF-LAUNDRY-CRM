@@ -430,8 +430,6 @@ export interface IStorage {
   deleteAllBills(): Promise<void>;
   deleteAllClients(): Promise<void>;
   deleteAllIncidents(): Promise<void>;
-  resetUsersToDefaults(): Promise<void>;
-  resetPackingWorkersToDefaults(): Promise<void>;
   getPackingWorkers(): Promise<PackingWorker[]>;
   getPackingWorker(id: number): Promise<PackingWorker | undefined>;
   createPackingWorker(worker: InsertPackingWorker): Promise<PackingWorker>;
@@ -553,6 +551,13 @@ export class DatabaseStorage implements IStorage {
   }
 
   private async ensureProductCategorySettingsTable(): Promise<void> {
+    if (
+      process.env.NODE_ENV === "production" &&
+      process.env.ENABLE_RUNTIME_SCHEMA_MIGRATIONS !== "true"
+    ) {
+      return;
+    }
+
     await db.execute(sql`
       CREATE TABLE IF NOT EXISTS product_category_settings (
         id SERIAL PRIMARY KEY,
@@ -2504,56 +2509,6 @@ export class DatabaseStorage implements IStorage {
     await db.delete(incidents);
   }
 
-  async resetUsersToDefaults(): Promise<void> {
-    // Delete all non-admin users
-    await db.delete(users).where(ne(users.role, 'admin'));
-    
-    // Get admin user to preserve their current settings
-    const [adminUser] = await db.select().from(users).where(eq(users.role, 'admin'));
-    
-    // If admin exists but doesn't have a PIN, set default PIN
-    if (adminUser && !adminUser.pin) {
-      await db.update(users).set({ pin: '00000' }).where(eq(users.id, adminUser.id));
-    }
-    
-    // Insert default non-admin users (matching current optimal state)
-    const defaultUsers = [
-      {
-        username: "reception1",
-        password: "reception123",
-        role: "reception",
-        name: "ReceptionUsername",
-        pin: "11111",
-        active: true,
-      },
-      {
-        username: "staff1",
-        password: "staff123",
-        role: "staff",
-        name: "StaffUsername",
-        pin: "22222",
-        active: true,
-      },
-      {
-        username: "driver1",
-        password: "driver123",
-        role: "driver",
-        name: "DriverUsername",
-        pin: "33333",
-        active: true,
-      },
-    ];
-    
-    for (const user of defaultUsers) {
-      await db.insert(users).values(user);
-    }
-  }
-
-  async resetPackingWorkersToDefaults(): Promise<void> {
-    // Delete all packing workers - staff users handle packing by default
-    await db.delete(packingWorkers);
-  }
-
   async getPackingWorkers(): Promise<PackingWorker[]> {
     return await db.select().from(packingWorkers);
   }
@@ -3177,22 +3132,34 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getCompanyContactSettings(): Promise<CompanyContactSettings> {
-    await db.execute(sql`
-      ALTER TABLE company_contact_settings
-      ADD COLUMN IF NOT EXISTS dashboard_clock_hour12 BOOLEAN NOT NULL DEFAULT TRUE
-    `);
+    if (
+      process.env.NODE_ENV !== "production" ||
+      process.env.ENABLE_RUNTIME_SCHEMA_MIGRATIONS === "true"
+    ) {
+      await db.execute(sql`
+        ALTER TABLE company_contact_settings
+        ADD COLUMN IF NOT EXISTS dashboard_clock_hour12 BOOLEAN NOT NULL DEFAULT TRUE
+      `);
+    }
 
     const [existing] = await db.select().from(companyContactSettings).orderBy(companyContactSettings.id);
     if (existing) return existing;
 
     const [created] = await db
       .insert(companyContactSettings)
-      .values({ id: 1 })
+      .values({})
       .returning();
     return created;
   }
 
   private async ensureSalesReportScheduleSettingsTable(): Promise<void> {
+    if (
+      process.env.NODE_ENV === "production" &&
+      process.env.ENABLE_RUNTIME_SCHEMA_MIGRATIONS !== "true"
+    ) {
+      return;
+    }
+
     await db.execute(sql`
       CREATE TABLE IF NOT EXISTS sales_report_schedule_settings (
         id SERIAL PRIMARY KEY,
@@ -3218,11 +3185,6 @@ export class DatabaseStorage implements IStorage {
       ADD COLUMN IF NOT EXISTS daily_report_day_offset INTEGER NOT NULL DEFAULT 0
     `);
 
-    await db.execute(sql`
-      INSERT INTO sales_report_schedule_settings (id)
-      VALUES (1)
-      ON CONFLICT (id) DO NOTHING
-    `);
   }
 
   async getSalesReportScheduleSettings(): Promise<SalesReportScheduleSettings> {
@@ -3237,7 +3199,7 @@ export class DatabaseStorage implements IStorage {
 
     const [created] = await db
       .insert(salesReportScheduleSettings)
-      .values({ id: 1 })
+      .values({})
       .returning();
     return created;
   }
@@ -3265,7 +3227,6 @@ export class DatabaseStorage implements IStorage {
     const [created] = await db
       .insert(productCategorySettings)
       .values({
-        id: 1,
         baseCategories: defaults.baseCategories,
         customCategories: defaults.customCategories,
         inventoryDisplayOrder: defaults.inventoryDisplayOrder,

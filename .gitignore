@@ -15,6 +15,7 @@ client/public/laundry-background.gif
 .env.*.local
 *.log
 *.sql
+*.dump
 *.sqlite
 *.sqlite3
 laundry.db

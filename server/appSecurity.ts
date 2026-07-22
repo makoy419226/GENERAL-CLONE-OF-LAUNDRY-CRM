@@ -1,8 +1,7 @@
 import { eq, sql } from "drizzle-orm";
 import { appSecuritySettings } from "@shared/schema";
-import { db } from "./db";
+import { db, getCurrentDatabaseScope } from "./db";
 
-const APP_SECURITY_SETTINGS_ID = 1;
 const DEFAULT_LOCKDOWN_REASON = "Page lockdown for security reasons.";
 
 export type AppLockdownStatus = {
@@ -14,15 +13,29 @@ export type AppLockdownStatus = {
 };
 
 let ensurePromise: Promise<void> | null = null;
-let cachedStatus: AppLockdownStatus | null = null;
-let cachedStatusUntil = 0;
+const cachedStatuses = new Map<
+  string,
+  { status: AppLockdownStatus; expiresAt: number }
+>();
+
+function getScopeCacheKey() {
+  const scope = getCurrentDatabaseScope();
+  if (!scope) return "unscoped";
+  return "platform" in scope ? "platform" : `business:${scope.businessId}`;
+}
 
 export function clearAppLockdownStatusCache() {
-  cachedStatus = null;
-  cachedStatusUntil = 0;
+  cachedStatuses.clear();
 }
 
 export async function ensureAppSecuritySettingsTable(): Promise<void> {
+  if (
+    process.env.NODE_ENV === "production" &&
+    process.env.ENABLE_RUNTIME_SCHEMA_MIGRATIONS !== "true"
+  ) {
+    return;
+  }
+
   if (!ensurePromise) {
     ensurePromise = (async () => {
       await db.execute(sql`
@@ -35,17 +48,6 @@ export async function ensureAppSecuritySettingsTable(): Promise<void> {
           updated_at TIMESTAMP NOT NULL DEFAULT NOW()
         )
       `);
-
-      await db
-        .insert(appSecuritySettings)
-        .values({
-          id: APP_SECURITY_SETTINGS_ID,
-          lockdownEnabled: false,
-          lockdownReason: DEFAULT_LOCKDOWN_REASON,
-          lockdownAt: null,
-          lockdownBy: null,
-        })
-        .onConflictDoNothing();
     })().catch((error) => {
       ensurePromise = null;
       throw error;
@@ -66,8 +68,10 @@ function toLockdownStatus(row: typeof appSecuritySettings.$inferSelect): AppLock
 }
 
 export async function getAppLockdownStatus(): Promise<AppLockdownStatus> {
-  if (cachedStatus && Date.now() < cachedStatusUntil) {
-    return cachedStatus;
+  const cacheKey = getScopeCacheKey();
+  const cached = cachedStatuses.get(cacheKey);
+  if (cached && Date.now() < cached.expiresAt) {
+    return cached.status;
   }
 
   await ensureAppSecuritySettingsTable();
@@ -75,12 +79,13 @@ export async function getAppLockdownStatus(): Promise<AppLockdownStatus> {
   const [settings] = await db
     .select()
     .from(appSecuritySettings)
-    .where(eq(appSecuritySettings.id, APP_SECURITY_SETTINGS_ID))
+    .orderBy(appSecuritySettings.id)
     .limit(1);
 
   const status = toLockdownStatus(
     settings || {
-      id: APP_SECURITY_SETTINGS_ID,
+      id: 0,
+      businessId: null,
       lockdownEnabled: false,
       lockdownReason: DEFAULT_LOCKDOWN_REASON,
       lockdownAt: null,
@@ -89,8 +94,48 @@ export async function getAppLockdownStatus(): Promise<AppLockdownStatus> {
     },
   );
 
-  cachedStatus = status;
-  cachedStatusUntil = Date.now() + 1000;
+  cachedStatuses.set(cacheKey, {
+    status,
+    expiresAt: Date.now() + 1000,
+  });
+  return status;
+}
+
+export async function getAppLockdownStatusForBusiness(
+  businessId: number,
+): Promise<AppLockdownStatus> {
+  if (!Number.isSafeInteger(businessId) || businessId <= 0) {
+    throw new Error("A valid business is required for lockdown status");
+  }
+
+  const cacheKey = `business:${businessId}`;
+  const cached = cachedStatuses.get(cacheKey);
+  if (cached && Date.now() < cached.expiresAt) {
+    return cached.status;
+  }
+
+  await ensureAppSecuritySettingsTable();
+  const [settings] = await db
+    .select()
+    .from(appSecuritySettings)
+    .where(eq(appSecuritySettings.businessId, businessId))
+    .limit(1);
+  const status = toLockdownStatus(
+    settings || {
+      id: 0,
+      businessId,
+      lockdownEnabled: false,
+      lockdownReason: DEFAULT_LOCKDOWN_REASON,
+      lockdownAt: null,
+      lockdownBy: null,
+      updatedAt: new Date(),
+    },
+  );
+
+  cachedStatuses.set(cacheKey, {
+    status,
+    expiresAt: Date.now() + 1000,
+  });
   return status;
 }
 
@@ -103,31 +148,35 @@ export async function setAppLockdownStatus(
   const nextLockdownAt = enabled ? new Date() : null;
   const nextLockdownBy = enabled ? actor || "Admin" : null;
 
-  const [updated] = await db
-    .update(appSecuritySettings)
-    .set({
-      lockdownEnabled: enabled,
-      lockdownReason: DEFAULT_LOCKDOWN_REASON,
-      lockdownAt: nextLockdownAt,
-      lockdownBy: nextLockdownBy,
-      updatedAt: new Date(),
-    })
-    .where(eq(appSecuritySettings.id, APP_SECURITY_SETTINGS_ID))
-    .returning();
+  const [existing] = await db
+    .select({ id: appSecuritySettings.id })
+    .from(appSecuritySettings)
+    .orderBy(appSecuritySettings.id)
+    .limit(1);
+
+  const [updated] = existing
+    ? await db
+        .update(appSecuritySettings)
+        .set({
+          lockdownEnabled: enabled,
+          lockdownReason: DEFAULT_LOCKDOWN_REASON,
+          lockdownAt: nextLockdownAt,
+          lockdownBy: nextLockdownBy,
+          updatedAt: new Date(),
+        })
+        .where(eq(appSecuritySettings.id, existing.id))
+        .returning()
+    : await db
+        .insert(appSecuritySettings)
+        .values({
+          lockdownEnabled: enabled,
+          lockdownReason: DEFAULT_LOCKDOWN_REASON,
+          lockdownAt: nextLockdownAt,
+          lockdownBy: nextLockdownBy,
+        })
+        .returning();
 
   clearAppLockdownStatusCache();
 
-  if (updated) {
-    return toLockdownStatus(updated);
-  }
-
-  await db.insert(appSecuritySettings).values({
-    id: APP_SECURITY_SETTINGS_ID,
-    lockdownEnabled: enabled,
-    lockdownReason: DEFAULT_LOCKDOWN_REASON,
-    lockdownAt: nextLockdownAt,
-    lockdownBy: nextLockdownBy,
-  });
-
-  return getAppLockdownStatus();
+  return toLockdownStatus(updated);
 }

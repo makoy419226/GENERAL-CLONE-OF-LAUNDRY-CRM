@@ -18,10 +18,16 @@ import {
   normalizeProductCategorySettings,
 } from "@shared/productCategories";
 import { z } from "zod";
-import { db } from "./db";
+import {
+  db,
+  runRequestWithDatabaseScope,
+  runWithPlatformDatabase,
+} from "./db";
 import {
   users,
   laundryBusinesses,
+  organizationUnits,
+  staffProfiles,
   passwordResetTokens,
   stageChecklists,
   packingWorkers,
@@ -37,14 +43,18 @@ import {
   companies,
   productCategorySettings,
   companyContactSettings,
+  appSecuritySettings,
+  salesReportScheduleSettings,
   reviews,
 } from "@shared/schema";
 import { eq, and, gt, ne, not, or, desc, sql, inArray, isNull } from "drizzle-orm";
-import { createAuthToken, getRequestAuth } from "./authToken";
 import {
-  sendAdminPasswordOtpEmail,
-  sendUserPasswordResetEmail,
-} from "./passwordResetEmail";
+  AUTH_COOKIE_NAME,
+  AUTH_TOKEN_TTL_MS,
+  createAuthToken,
+  getRequestAuth,
+} from "./authToken";
+import { sendUserPasswordResetEmail } from "./passwordResetEmail";
 import { sendDailySalesReportEmailSMTP, sendSalesReportEmailSMTP, type DailySalesData, type SalesReportData, type ReportPeriod } from "./smtp";
 import PDFDocument from "pdfkit";
 import bcrypt from "bcryptjs";
@@ -60,6 +70,7 @@ import {
   clearAppLockdownStatusCache,
   ensureAppSecuritySettingsTable,
   getAppLockdownStatus,
+  getAppLockdownStatusForBusiness,
   setAppLockdownStatus,
 } from "./appSecurity";
 import {
@@ -68,6 +79,10 @@ import {
 } from "./errorFormatting";
 import { ensureMultiTenantFoundation } from "./multiTenant";
 import { encryptBusinessSecret } from "./businessSecrets";
+import {
+  resolveRequestIdentity,
+  type TenantRequestContext,
+} from "./tenantContext";
 
 type TrackingPaymentStatus = "all" | "paid" | "unpaid";
 type TrackingSortOrder = "newest" | "oldest";
@@ -655,7 +670,7 @@ async function getNextSequentialOrderNumber(): Promise<string> {
 
 async function getAdminPasswordForVerification(): Promise<string> {
   const adminUser = await storage.getUserByUsername("admin");
-  return adminUser?.password || process.env.ADMIN_PASSWORD || "admin123";
+  return adminUser?.password || process.env.ADMIN_PASSWORD || "";
 }
 
 async function verifyAdminPassword(adminPassword: string): Promise<boolean> {
@@ -1532,10 +1547,12 @@ export async function registerRoutes(
       return;
     }
 
-    try {
-      await seedDatabase();
-    } catch (err) {
-      logStartupMigrationError("Seed error", err);
+    if (process.env.ENABLE_LEGACY_STARTUP_SEED === "true") {
+      try {
+        await seedDatabase();
+      } catch (err) {
+        logStartupMigrationError("Seed error", err);
+      }
     }
 
   try {
@@ -1634,11 +1651,6 @@ export async function registerRoutes(
       ALTER TABLE company_contact_settings
       ADD COLUMN IF NOT EXISTS dashboard_clock_hour12 BOOLEAN NOT NULL DEFAULT TRUE
     `);
-    await db.execute(sql`
-      INSERT INTO company_contact_settings (id)
-      VALUES (1)
-      ON CONFLICT (id) DO NOTHING
-    `);
   } catch (err) {
     logStartupMigrationError("Company contact settings table setup error", err);
   }
@@ -1647,12 +1659,6 @@ export async function registerRoutes(
     await ensureAppSecuritySettingsTable();
   } catch (err) {
     logStartupMigrationError("App security settings table setup error", err);
-  }
-
-  try {
-    await storage.getSalesReportScheduleSettings();
-  } catch (err) {
-    logStartupMigrationError("Sales report schedule settings table setup error", err);
   }
 
   // One-time migration: move orders to correct dates
@@ -1851,12 +1857,22 @@ export async function registerRoutes(
   }; // end runStartupMigrations
 
   // Fire migrations in background - don't await so the server can start listening immediately
-  runStartupMigrations().catch((err) =>
-    logStartupMigrationError("Migration error", err),
-  );
+  if (
+    process.env.NODE_ENV !== "production" ||
+    process.env.ENABLE_RUNTIME_SCHEMA_MIGRATIONS === "true"
+  ) {
+    runWithPlatformDatabase(runStartupMigrations).catch((err) =>
+      logStartupMigrationError("Migration error", err),
+    );
+  }
 
   // Active session tracking (in-memory, stores userId -> lastActivity timestamp)
-  const activeSessions = new Map<number, { userId: number; username: string; lastActivity: Date }>();
+  const activeSessions = new Map<number, {
+    userId: number;
+    username: string;
+    businessId: number | null;
+    lastActivity: Date;
+  }>();
   const SESSION_TIMEOUT_MS = 2 * 60 * 1000; // 2 minutes - user is considered offline after this
 
   // Force logout tracking - stores userIds that should be logged out on next heartbeat
@@ -1893,6 +1909,41 @@ export async function registerRoutes(
     return false;
   };
 
+  const publicPlatformPostPaths = new Set([
+    "/api/auth/login",
+    "/api/auth/forgot-password",
+    "/api/auth/verify-reset-code",
+    "/api/auth/reset-password",
+  ]);
+  const authenticatedStreamPaths = new Set([
+    "/api/auth/logout-stream",
+    "/api/streams/bills",
+    "/api/streams/client-transactions",
+    "/api/streams/product-category-settings",
+  ]);
+  const authenticatedAuthPaths = new Set([
+    "/api/auth/logout",
+    "/api/auth/heartbeat",
+    "/api/auth/active-sessions",
+    "/api/auth/logout-stream",
+    "/api/streams/bills",
+    "/api/streams/client-transactions",
+    "/api/streams/product-category-settings",
+  ]);
+
+  const isPublicPlatformApiPath = (req: Request) =>
+    (req.method === "POST" && publicPlatformPostPaths.has(req.path)) ||
+    (req.method === "GET" && /^\/api\/orders\/public\/[^/]+$/.test(req.path));
+
+  const sendIdentityFailure = (
+    res: ExpressResponse,
+    failure: { status: number; message: string },
+  ) =>
+    res.status(failure.status).json({
+      success: false,
+      message: failure.message,
+    });
+
   const sendForceLogoutToUser = (userId: number) => {
     const clients = sseClients.get(userId);
     if (!clients || clients.length === 0) return;
@@ -1925,13 +1976,88 @@ export async function registerRoutes(
 
   app.get("/api/security/lockdown", async (_req, res) => {
     try {
-      res.json(await getAppLockdownStatus());
+      res.json(await runWithPlatformDatabase(() => getAppLockdownStatus()));
     } catch (err) {
       res.status(500).json({
         enabled: false,
         reason: "Unable to read lockdown status",
         message: formatErrorMessage(err, "Unable to read lockdown status"),
       });
+    }
+  });
+
+  // Establish an immutable, server-derived database scope before any protected
+  // API handler runs. PostgreSQL RLS then applies the business boundary even to
+  // legacy storage helpers and direct Drizzle queries.
+  app.use(async (req, res, next) => {
+    if (!req.path.startsWith("/api")) {
+      return next();
+    }
+
+    try {
+      if (isPublicPlatformApiPath(req)) {
+        await runRequestWithDatabaseScope({ platform: true }, res, next);
+        return;
+      }
+
+      const resolution = await runWithPlatformDatabase(() =>
+        resolveRequestIdentity(req),
+      );
+      if (!resolution.ok) {
+        sendIdentityFailure(res, resolution);
+        return;
+      }
+
+      const identity = resolution.context;
+      res.locals.requestIdentity = identity;
+
+      if (
+        identity.role === "super_admin" &&
+        !req.path.startsWith("/api/super-admin/") &&
+        !authenticatedAuthPaths.has(req.path)
+      ) {
+        res.status(403).json({
+          success: false,
+          message: "Platform owners must use the Super Admin console for tenant data",
+        });
+        return;
+      }
+
+      if (
+        identity.role !== "super_admin" &&
+        identity.role !== "admin" &&
+        (req.path.startsWith("/api/admin/") ||
+          req.path === "/api/users" ||
+          req.path.startsWith("/api/users/") ||
+          req.path === "/api/auth/active-sessions")
+      ) {
+        res.status(403).json({
+          success: false,
+          message: "Business administrator access is required",
+        });
+        return;
+      }
+
+      // Streams do not issue tenant queries after authentication. Keeping them
+      // outside a response-lifetime DB scope avoids reserving a pool connection
+      // for the duration of an EventSource connection.
+      if (authenticatedStreamPaths.has(req.path)) {
+        next();
+        return;
+      }
+
+      if (identity.role === "super_admin") {
+        await runRequestWithDatabaseScope({ platform: true }, res, next);
+        return;
+      }
+
+      await runRequestWithDatabaseScope(
+        { businessId: identity.businessId as number },
+        res,
+        next,
+      );
+    } catch (error) {
+      next(error);
     }
   });
 
@@ -2004,10 +2130,11 @@ export async function registerRoutes(
 
   // SSE endpoint for logout notifications
   app.get("/api/auth/logout-stream", (req, res) => {
-    const userId = parseInt(req.query.userId as string);
-    if (!userId) {
-      return res.status(400).json({ error: "userId required" });
+    const identity = res.locals.requestIdentity as TenantRequestContext | undefined;
+    if (!identity) {
+      return res.status(401).json({ error: "Authentication required" });
     }
+    const userId = identity.userId;
 
     res.setHeader("Content-Type", "text/event-stream");
     res.setHeader("Cache-Control", "no-cache");
@@ -2057,7 +2184,11 @@ export async function registerRoutes(
 
   // Heartbeat endpoint - called periodically by logged-in users
   app.post("/api/auth/heartbeat", async (req, res) => {
-    const { userId, username } = req.body;
+    const identity = res.locals.requestIdentity as TenantRequestContext | undefined;
+    if (!identity) {
+      return res.status(401).json({ success: false, message: "Authentication required" });
+    }
+    const { userId, username, businessId } = identity;
     if (userId) {
       // Check if user should be force logged out
       if (forceLogoutUsers.has(userId)) {
@@ -2068,7 +2199,8 @@ export async function registerRoutes(
 
       activeSessions.set(userId, {
         userId,
-        username: username || "",
+        username,
+        businessId,
         lastActivity: new Date()
       });
     }
@@ -2077,6 +2209,10 @@ export async function registerRoutes(
 
   // Get active sessions (for admin to see who's online)
   app.get("/api/auth/active-sessions", async (req, res) => {
+    const identity = res.locals.requestIdentity as TenantRequestContext | undefined;
+    if (!identity) {
+      return res.status(401).json({ message: "Authentication required" });
+    }
     const now = new Date();
     const activeUserIds: number[] = [];
 
@@ -2084,7 +2220,10 @@ export async function registerRoutes(
     for (const [userId, session] of Array.from(activeSessions.entries())) {
       if (now.getTime() - session.lastActivity.getTime() > SESSION_TIMEOUT_MS) {
         activeSessions.delete(userId);
-      } else {
+      } else if (
+        identity.role === "super_admin" ||
+        session.businessId === identity.businessId
+      ) {
         activeUserIds.push(userId);
       }
     }
@@ -2098,6 +2237,10 @@ export async function registerRoutes(
 
   const registerLiveResourceStream = (path: string, resource: LiveResource) => {
     app.get(path, (_req, res) => {
+      const identity = res.locals.requestIdentity as TenantRequestContext | undefined;
+      if (!identity || identity.role === "super_admin" || identity.businessId === null) {
+        return res.status(403).json({ message: "Tenant access is required" });
+      }
       res.setHeader("Content-Type", "text/event-stream");
       res.setHeader("Cache-Control", "no-cache, no-transform");
       res.setHeader("Connection", "keep-alive");
@@ -2156,7 +2299,7 @@ export async function registerRoutes(
 
     // Verify admin password from database
     const adminUser = await storage.getUserByUsername("admin");
-    const correctPassword = adminUser?.password || process.env.ADMIN_PASSWORD || "admin123";
+    const correctPassword = adminUser?.password || process.env.ADMIN_PASSWORD || "";
 
     if (adminPassword !== correctPassword) {
       return res.status(401).json({ success: false, message: "Invalid admin password" });
@@ -2203,7 +2346,7 @@ export async function registerRoutes(
 
     // Verify admin password from database
     const adminUser = await storage.getUserByUsername("admin");
-    const correctPassword = adminUser?.password || process.env.ADMIN_PASSWORD || "admin123";
+    const correctPassword = adminUser?.password || process.env.ADMIN_PASSWORD || "";
 
     if (adminPassword !== correctPassword) {
       return res.status(401).json({ success: false, message: "Invalid admin password" });
@@ -2271,15 +2414,6 @@ export async function registerRoutes(
         });
       }
 
-      const lockdownStatus = await getAppLockdownStatus();
-      if (lockdownStatus.enabled && user.role !== "admin" && user.role !== "super_admin") {
-        return res.status(423).json({
-          success: false,
-          locked: true,
-          message: lockdownStatus.reason || "Page lockdown for security reasons.",
-        });
-      }
-
       const business = user.businessId
         ? await db
             .select()
@@ -2299,6 +2433,16 @@ export async function registerRoutes(
           message: "This business account is currently suspended",
         });
       }
+      if (business && user.role !== "admin") {
+        const lockdownStatus = await getAppLockdownStatusForBusiness(business.id);
+        if (lockdownStatus.enabled) {
+          return res.status(423).json({
+            success: false,
+            locked: true,
+            message: lockdownStatus.reason || "Page lockdown for security reasons.",
+          });
+        }
+      }
       const token = createAuthToken({
         userId: user.id,
         username: user.username,
@@ -2306,6 +2450,13 @@ export async function registerRoutes(
         businessId: user.businessId || null,
       });
 
+      res.cookie(AUTH_COOKIE_NAME, token, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "strict",
+        path: "/",
+        maxAge: AUTH_TOKEN_TTL_MS,
+      });
       res.json({
         success: true,
         message: "Login successful",
@@ -2326,17 +2477,27 @@ export async function registerRoutes(
     }
   });
 
+  app.post("/api/auth/logout", (_req, res) => {
+    res.clearCookie(AUTH_COOKIE_NAME, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "strict",
+      path: "/",
+    });
+    res.json({ success: true });
+  });
+
   const requireSuperAdmin = (req: Request, res: ExpressResponse) => {
-    const auth = getRequestAuth(req);
-    if (!auth) {
+    const identity = res.locals.requestIdentity as TenantRequestContext | undefined;
+    if (!identity) {
       res.status(401).json({ message: "Sign in as the platform owner to continue" });
       return null;
     }
-    if (auth.role !== "super_admin" || auth.businessId !== null) {
+    if (identity.role !== "super_admin" || identity.businessId !== null) {
       res.status(403).json({ message: "Super administrator access is required" });
       return null;
     }
-    return auth;
+    return identity;
   };
 
   const createBusinessInputSchema = z.object({
@@ -2809,6 +2970,355 @@ export async function registerRoutes(
     }
   });
 
+  app.delete("/api/super-admin/accounts/:id", async (req, res) => {
+    if (!requireSuperAdmin(req, res)) return;
+    const accountId = Number(req.params.id);
+    if (!Number.isInteger(accountId) || accountId <= 0) {
+      return res.status(400).json({ message: "Choose a valid account" });
+    }
+
+    try {
+      await ensureMultiTenantFoundation();
+
+      const result = await db.transaction(async (tx) => {
+        const [candidate] = await tx
+          .select({
+            id: users.id,
+            businessId: users.businessId,
+            role: users.role,
+          })
+          .from(users)
+          .where(eq(users.id, accountId))
+          .limit(1);
+
+        if (
+          !candidate ||
+          candidate.businessId === null ||
+          candidate.role === "super_admin"
+        ) {
+          return { status: "not_found" } as const;
+        }
+
+        const businessId = candidate.businessId;
+        await tx.execute(
+          sql`SELECT pg_advisory_xact_lock(2026072202, ${businessId})`,
+        );
+
+        const tenantAccounts = await tx
+          .select({
+            id: users.id,
+            username: users.username,
+            name: users.name,
+            role: users.role,
+            active: users.active,
+            businessId: users.businessId,
+          })
+          .from(users)
+          .where(eq(users.businessId, businessId))
+          .for("update");
+        const account = tenantAccounts.find(
+          (tenantAccount) => tenantAccount.id === accountId,
+        );
+
+        if (!account || account.role === "super_admin") {
+          return { status: "not_found" } as const;
+        }
+
+        if (account.role === "admin" && account.active === true) {
+          const hasReplacementAdministrator = tenantAccounts.some(
+            (tenantAccount) =>
+              tenantAccount.id !== account.id &&
+              tenantAccount.role === "admin" &&
+              tenantAccount.active === true,
+          );
+          if (!hasReplacementAdministrator) {
+            return { status: "last_active_admin" } as const;
+          }
+        }
+
+        const externalReferenceResult = await tx.execute(sql`
+          SELECT EXISTS (
+            SELECT 1
+            FROM staff_profiles
+            WHERE linked_user_id = ${account.id}
+              AND business_id IS DISTINCT FROM ${businessId}
+          ) AS has_external_reference
+        `);
+        const hasExternalReference = Boolean(
+          ((externalReferenceResult as any)?.rows || [])[0]
+            ?.has_external_reference,
+        );
+        if (hasExternalReference) {
+          return { status: "integrity_conflict" } as const;
+        }
+
+        await tx
+          .update(staffProfiles)
+          .set({ linkedUserId: null })
+          .where(
+            and(
+              eq(staffProfiles.businessId, businessId),
+              eq(staffProfiles.linkedUserId, account.id),
+            ),
+          );
+        await tx
+          .delete(passwordResetTokens)
+          .where(eq(passwordResetTokens.userId, account.id));
+        const [deletedAccount] = await tx
+          .delete(users)
+          .where(
+            and(
+              eq(users.id, account.id),
+              eq(users.businessId, businessId),
+              ne(users.role, "super_admin"),
+            ),
+          )
+          .returning({ id: users.id });
+
+        if (!deletedAccount) {
+          throw new Error("Tenant account disappeared during deletion");
+        }
+
+        return {
+          status: "deleted",
+          accountId: deletedAccount.id,
+          displayName: account.name || account.username,
+        } as const;
+      });
+
+      if (result.status === "not_found") {
+        return res.status(404).json({ message: "Tenant account not found" });
+      }
+      if (result.status === "last_active_admin") {
+        return res.status(409).json({
+          message: "Create another active business administrator before deleting this account",
+        });
+      }
+      if (result.status === "integrity_conflict") {
+        return res.status(409).json({
+          message: "This account is linked to another tenant's staff data and cannot be safely deleted",
+        });
+      }
+
+      forceLogoutUsers.add(result.accountId);
+      activeSessions.delete(result.accountId);
+      sendForceLogoutToUser(result.accountId);
+
+      return res.json({
+        message: `${result.displayName} was deleted`,
+        accountId: result.accountId,
+      });
+    } catch (error) {
+      console.error("Failed to delete tenant account", error);
+      return res.status(500).json({ message: "Failed to delete the tenant account" });
+    }
+  });
+
+  app.delete("/api/super-admin/businesses/:id", async (req, res) => {
+    if (!requireSuperAdmin(req, res)) return;
+    const businessId = Number(req.params.id);
+    if (!Number.isInteger(businessId) || businessId <= 0) {
+      return res.status(400).json({ message: "Choose a valid business" });
+    }
+
+    try {
+      await ensureMultiTenantFoundation();
+
+      const result = await db.transaction(async (tx) => {
+        await tx.execute(
+          sql`SELECT pg_advisory_xact_lock(2026072202, ${businessId})`,
+        );
+
+        const [business] = await tx
+          .select({ id: laundryBusinesses.id, name: laundryBusinesses.name })
+          .from(laundryBusinesses)
+          .where(eq(laundryBusinesses.id, businessId))
+          .limit(1)
+          .for("update");
+        if (!business) {
+          return { status: "not_found" } as const;
+        }
+
+        const tenantAccounts = await tx
+          .select({
+            id: users.id,
+            username: users.username,
+            role: users.role,
+          })
+          .from(users)
+          .where(eq(users.businessId, businessId))
+          .for("update");
+        if (tenantAccounts.some((account) => account.role === "super_admin")) {
+          return { status: "platform_owner_conflict" } as const;
+        }
+
+        const externalReferenceResult = await tx.execute(sql`
+          SELECT
+            EXISTS (
+              SELECT 1
+              FROM users external_user
+              JOIN staff_profiles target_profile
+                ON target_profile.id = external_user.staff_profile_id
+              WHERE target_profile.business_id = ${businessId}
+                AND external_user.business_id IS DISTINCT FROM ${businessId}
+            )
+            OR EXISTS (
+              SELECT 1
+              FROM staff_profiles external_profile
+              JOIN users target_user
+                ON target_user.id = external_profile.linked_user_id
+              WHERE target_user.business_id = ${businessId}
+                AND external_profile.business_id IS DISTINCT FROM ${businessId}
+            )
+            OR EXISTS (
+              SELECT 1
+              FROM staff_profiles external_profile
+              JOIN organization_units target_unit
+                ON target_unit.id = external_profile.organization_unit_id
+              WHERE target_unit.business_id = ${businessId}
+                AND external_profile.business_id IS DISTINCT FROM ${businessId}
+            )
+            OR EXISTS (
+              SELECT 1
+              FROM staff_profiles external_profile
+              JOIN staff_profiles target_manager
+                ON target_manager.id = external_profile.manager_staff_id
+              WHERE target_manager.business_id = ${businessId}
+                AND external_profile.business_id IS DISTINCT FROM ${businessId}
+            ) AS has_external_reference
+        `);
+        const hasExternalReference = Boolean(
+          ((externalReferenceResult as any)?.rows || [])[0]
+            ?.has_external_reference,
+        );
+        if (hasExternalReference) {
+          return { status: "integrity_conflict" } as const;
+        }
+
+        const tenantAccountIds = tenantAccounts.map((account) => account.id);
+
+        // Delete leaf and historical records before their order, bill, and
+        // client parents. Several legacy relationships are not declared as
+        // foreign keys, so the order is explicit rather than relying on a
+        // database-level cascading delete.
+        await tx.execute(sql`
+          DELETE FROM order_date_change_audit
+          WHERE business_id = ${businessId}
+        `);
+        await tx
+          .delete(stageChecklists)
+          .where(eq(stageChecklists.businessId, businessId));
+        await tx.delete(reviews).where(eq(reviews.businessId, businessId));
+        await tx
+          .delete(missingItems)
+          .where(eq(missingItems.businessId, businessId));
+        await tx.delete(incidents).where(eq(incidents.businessId, businessId));
+        await tx
+          .delete(billPayments)
+          .where(eq(billPayments.businessId, businessId));
+        await tx
+          .delete(clientTransactions)
+          .where(eq(clientTransactions.businessId, businessId));
+        await tx.delete(orders).where(eq(orders.businessId, businessId));
+        await tx.delete(bills).where(eq(bills.businessId, businessId));
+        await tx.delete(clients).where(eq(clients.businessId, businessId));
+
+        await tx.delete(products).where(eq(products.businessId, businessId));
+        await tx
+          .delete(packingWorkers)
+          .where(eq(packingWorkers.businessId, businessId));
+        await tx
+          .delete(staffMembers)
+          .where(eq(staffMembers.businessId, businessId));
+        await tx.delete(companies).where(eq(companies.businessId, businessId));
+        await tx
+          .delete(productCategorySettings)
+          .where(eq(productCategorySettings.businessId, businessId));
+        await tx
+          .delete(companyContactSettings)
+          .where(eq(companyContactSettings.businessId, businessId));
+        await tx
+          .delete(appSecuritySettings)
+          .where(eq(appSecuritySettings.businessId, businessId));
+        await tx
+          .delete(salesReportScheduleSettings)
+          .where(eq(salesReportScheduleSettings.businessId, businessId));
+
+        // Break the nullable user/staff hierarchy links deliberately before
+        // deleting either side of the cycle.
+        await tx
+          .update(users)
+          .set({ staffProfileId: null })
+          .where(eq(users.businessId, businessId));
+        await tx
+          .update(staffProfiles)
+          .set({
+            organizationUnitId: null,
+            managerStaffId: null,
+            linkedUserId: null,
+          })
+          .where(eq(staffProfiles.businessId, businessId));
+
+        if (tenantAccountIds.length > 0) {
+          await tx
+            .delete(passwordResetTokens)
+            .where(inArray(passwordResetTokens.userId, tenantAccountIds));
+        }
+        await tx
+          .delete(staffProfiles)
+          .where(eq(staffProfiles.businessId, businessId));
+        await tx.delete(users).where(eq(users.businessId, businessId));
+        await tx
+          .delete(organizationUnits)
+          .where(eq(organizationUnits.businessId, businessId));
+
+        const [deletedBusiness] = await tx
+          .delete(laundryBusinesses)
+          .where(eq(laundryBusinesses.id, businessId))
+          .returning({ id: laundryBusinesses.id, name: laundryBusinesses.name });
+        if (!deletedBusiness) {
+          throw new Error("Business disappeared during deletion");
+        }
+
+        return {
+          status: "deleted",
+          business: deletedBusiness,
+          accountIds: tenantAccountIds,
+        } as const;
+      });
+
+      if (result.status === "not_found") {
+        return res.status(404).json({ message: "Business not found" });
+      }
+      if (result.status === "platform_owner_conflict") {
+        return res.status(409).json({
+          message: "A platform-owner account is assigned to this business; deletion was cancelled",
+        });
+      }
+      if (result.status === "integrity_conflict") {
+        return res.status(409).json({
+          message: "This business is referenced by another tenant's staff hierarchy and cannot be safely deleted",
+        });
+      }
+
+      for (const accountId of result.accountIds) {
+        forceLogoutUsers.add(accountId);
+        activeSessions.delete(accountId);
+        sendForceLogoutToUser(accountId);
+      }
+      clearAppLockdownStatusCache();
+
+      return res.json({
+        message: `${result.business.name} and all of its tenant data were deleted`,
+        businessId: result.business.id,
+        deletedAccountCount: result.accountIds.length,
+      });
+    } catch (error) {
+      console.error("Failed to delete business", error);
+      return res.status(500).json({ message: "Failed to delete the business" });
+    }
+  });
+
   // Request password reset
   app.post("/api/auth/forgot-password", async (req, res) => {
     const { email } = req.body;
@@ -3031,17 +3541,16 @@ export async function registerRoutes(
       .trim()
       .toLowerCase() === "admin";
 
-  // Get all users (admin only) - includes password and PIN for admin view
+  // Tenant administrators may manage only accounts visible through their RLS
+  // scope. Credentials are write-only and are never returned by the API.
   app.get("/api/users", async (req, res) => {
     const userList = await db
       .select({
         id: users.id,
         username: users.username,
-        password: users.password,
         role: users.role,
         name: users.name,
         email: users.email,
-        pin: users.pin,
         active: users.active,
       })
       .from(users);
@@ -3061,8 +3570,8 @@ export async function registerRoutes(
       if (!normalizedUsername) {
         return res.status(400).json({ message: "Username is required" });
       }
-      if (!normalizedPassword) {
-        return res.status(400).json({ message: "Password is required" });
+      if (normalizedPassword.length < 8) {
+        return res.status(400).json({ message: "Password must have at least 8 characters" });
       }
       if (normalizedUsername.toLowerCase() === "admin") {
         return res
@@ -3122,7 +3631,7 @@ export async function registerRoutes(
           role: normalizedRole,
           name: name || normalizedUsername,
           email: normalizedEmail || null,
-          pin: normalizedPin || "12345",
+          pin: normalizedPin || null,
           active: true,
         })
         .returning();
@@ -3155,7 +3664,7 @@ export async function registerRoutes(
     if (!currentUser) {
       return res.status(404).json({ message: "User not found" });
     }
-    if (isPrimaryAdminUser(currentUser)) {
+    if (isPrimaryAdminUser(currentUser) || currentUser.role === "admin") {
       return res.status(403).json({
         message: "The main admin account must be managed from Admin Settings",
       });
@@ -3178,6 +3687,9 @@ export async function registerRoutes(
     }
     if (normalizedRole !== undefined && !allowedManagedUserRoles.has(normalizedRole)) {
       return res.status(400).json({ message: "Invalid user role" });
+    }
+    if (password !== undefined && String(password).length > 0 && String(password).length < 8) {
+      return res.status(400).json({ message: "Password must have at least 8 characters" });
     }
 
     // Check if PIN is provided and validate uniqueness
@@ -3273,7 +3785,7 @@ export async function registerRoutes(
     if (!existingUser) {
       return res.status(404).json({ message: "User not found" });
     }
-    if (isPrimaryAdminUser(existingUser)) {
+    if (isPrimaryAdminUser(existingUser) || existingUser.role === "admin") {
       return res.status(403).json({
         message: "The main admin account cannot be deleted from user management",
       });
@@ -9649,7 +10161,6 @@ export async function registerRoutes(
     try {
       let deletedOrders = 0;
       let deletedClients = 0;
-      let deletedUsers = 0;
       let deletedPackingWorkers = 0;
       let deletedStaffMembers = 0;
 
@@ -9664,33 +10175,12 @@ export async function registerRoutes(
       }
 
       if (selections.deleteStaff) {
-        const existingUsers = await db.select().from(users).where(ne(users.role, "admin"));
         const existingPackingWorkers = await storage.getPackingWorkers();
         const existingStaffMembers = await storage.getStaffMembers();
 
-        deletedUsers = existingUsers.length;
         deletedPackingWorkers = existingPackingWorkers.length;
         deletedStaffMembers = existingStaffMembers.length;
 
-        for (const user of existingUsers) {
-          forceLogoutUsers.add(user.id);
-          activeSessions.delete(user.id);
-
-          const userClients = sseClients.get(user.id);
-          if (userClients && userClients.length > 0) {
-            userClients.forEach((client) => {
-              try {
-                client.write(`data: ${JSON.stringify({ type: "forceLogout" })}\n\n`);
-              } catch (_error) {
-                // Ignore disconnected clients during cleanup
-              }
-            });
-          }
-
-          sseClients.delete(user.id);
-        }
-
-        await db.delete(users).where(ne(users.role, "admin"));
         await db.delete(packingWorkers);
         await db.delete(staffMembers);
       }
@@ -9704,7 +10194,7 @@ export async function registerRoutes(
       }
       if (selections.deleteStaff) {
         summaryParts.push(
-          `${deletedUsers} user account(s), ${deletedPackingWorkers} packing worker(s), and ${deletedStaffMembers} staff member(s)`,
+          `${deletedPackingWorkers} packing worker(s) and ${deletedStaffMembers} staff member record(s); login accounts were preserved`,
         );
       }
 
@@ -9714,7 +10204,7 @@ export async function registerRoutes(
         deleted: {
           orders: deletedOrders,
           clients: deletedClients,
-          users: deletedUsers,
+          users: 0,
           packingWorkers: deletedPackingWorkers,
           staffMembers: deletedStaffMembers,
         },
@@ -9747,7 +10237,7 @@ export async function registerRoutes(
   // Reset all transactions (admin password protected)
   app.post("/api/transactions/reset-all", async (req, res) => {
     const { adminPassword } = req.body;
-    const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "admin123";
+    const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "";
 
     if (!adminPassword || adminPassword !== ADMIN_PASSWORD) {
       return res.status(401).json({ message: "Invalid admin password" });
@@ -9764,7 +10254,7 @@ export async function registerRoutes(
   // Reset all bills (admin password protected)
   app.post("/api/bills/reset-all", async (req, res) => {
     const { adminPassword } = req.body;
-    const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "admin123";
+    const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "";
 
     if (!adminPassword || adminPassword !== ADMIN_PASSWORD) {
       return res.status(401).json({ message: "Invalid admin password" });
@@ -9810,7 +10300,7 @@ export async function registerRoutes(
     }
   });
 
-  // Reset everything (admin password protected)
+  // Reset operational data while preserving every login account.
   app.post("/api/admin/reset-all", async (req, res) => {
     const { adminPassword } = req.body;
 
@@ -9825,36 +10315,12 @@ export async function registerRoutes(
       await storage.deleteAllClients(); // This clears clients and remaining transactions
       await storage.deleteAllIncidents(); // This clears all incidents
 
-      // Reset users to defaults (keeping admin, adding default staff)
-      await storage.resetUsersToDefaults();
-
-      // Reset packing workers to defaults
-      await storage.resetPackingWorkersToDefaults();
-
-      res.json({ success: true, message: "All data has been reset successfully" });
+      res.json({
+        success: true,
+        message: "Operational data was reset. Login and staff accounts were preserved.",
+      });
     } catch (err: any) {
       res.status(500).json({ message: "Failed to reset all data: " + err.message });
-    }
-  });
-
-  // Reset users only (admin password protected)
-  app.post("/api/admin/reset-users", async (req, res) => {
-    const { adminPassword } = req.body;
-
-    if (!(await verifyAdminPassword(String(adminPassword || "")))) {
-      return res.status(401).json({ message: "Invalid admin password" });
-    }
-
-    try {
-      // Reset users to defaults (keeping admin, adding default staff)
-      await storage.resetUsersToDefaults();
-
-      // Reset packing workers to defaults (clears all)
-      await storage.resetPackingWorkersToDefaults();
-
-      res.json({ success: true, message: "Users have been reset to defaults" });
-    } catch (err: any) {
-      res.status(500).json({ message: "Failed to reset users: " + err.message });
     }
   });
 
@@ -10002,9 +10468,6 @@ export async function registerRoutes(
     }
   });
 
-  // Store for admin OTPs (in production, use database or Redis)
-  const adminOtpStore: { otp: string; expiresAt: Date } | null = { otp: "", expiresAt: new Date(0) };
-
   // Get admin account settings
   app.get("/api/admin/account", async (req, res) => {
     const auth = getRequestAuth(req);
@@ -10035,158 +10498,28 @@ export async function registerRoutes(
     });
   });
 
-  // Update admin account settings (display name, email, and PIN - requires current password)
-  app.put("/api/admin/account", async (req, res) => {
+  // Tenant account changes are controlled by the platform owner.
+  app.put("/api/admin/account", async (_req, res) => {
     return res.status(403).json({
       success: false,
       message: "Business account settings are managed by the super administrator",
     });
-
-    /* Business self-service is intentionally disabled.
-    const { currentPassword, name, email, pin } = req.body;
-
-    // Get admin user from database to verify password
-    const adminUser = await storage.getUserByUsername("admin");
-    const ADMIN_PASSWORD = adminUser?.password || process.env.ADMIN_PASSWORD || "admin123";
-
-    if (!currentPassword || currentPassword !== ADMIN_PASSWORD) {
-      return res.status(401).json({ success: false, message: "Invalid admin password" });
-    }
-
-    try {
-      if (adminUser) {
-        // Update admin user in database
-        const updates: any = {};
-        if (name !== undefined) {
-          const normalizedName = String(name || "").trim();
-          if (!normalizedName) {
-            return res.status(400).json({ success: false, message: "Display name is required" });
-          }
-          updates.name = normalizedName;
-        }
-        if (email) updates.email = email;
-        if (pin !== undefined && pin !== null && pin !== "") {
-          // Validate PIN is 5 digits if provided
-          if (!/^\d{5}$/.test(pin)) {
-            return res.status(400).json({ success: false, message: "PIN must be exactly 5 digits" });
-          }
-          updates.pin = pin;
-        }
-
-        await storage.updateUser(adminUser.id, updates);
-      }
-
-      res.json({
-        success: true,
-        message: "Admin settings updated successfully.",
-        settings: {
-          username: adminUser?.username || "admin",
-          name: name !== undefined ? String(name || "").trim() : (adminUser?.name || adminUser?.username || "admin"),
-          email,
-          hasPin: !!pin,
-        }
-      });
-    } catch (error) {
-      console.error("Error updating admin settings:", error);
-      res.status(500).json({ success: false, message: "Failed to update admin settings" });
-    }
-    */
   });
 
-  // Send OTP to admin email for password change
-  app.post("/api/admin/send-password-otp", async (req, res) => {
+  // Tenant password self-service is disabled; the platform owner manages it.
+  app.post("/api/admin/send-password-otp", async (_req, res) => {
     return res.status(403).json({
       success: false,
       message: "Business passwords are managed by the super administrator",
     });
-
-    /* Email OTP self-service is intentionally disabled.
-    const adminUser = await storage.getUserByUsername("admin");
-    const adminEmail = adminUser?.email || process.env.ADMIN_EMAIL || "idusma0010@gmail.com";
-
-    // Generate 6-digit OTP
-    const otp = Math.floor(100000 + Math.random() * 900000).toString();
-    const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes expiry
-
-    try {
-      const delivery = await sendAdminPasswordOtpEmail(adminEmail, otp);
-
-      adminOtpStore.otp = otp;
-      adminOtpStore.expiresAt = expiresAt;
-
-      res.json({
-        success: true,
-        message: delivery.message,
-        previewCode: delivery.previewCode,
-      });
-    } catch (error: any) {
-      console.error("Failed to send OTP:", error);
-      res.status(500).json({
-        success: false,
-        message:
-          error instanceof Error
-            ? error.message
-            : "Failed to send OTP email",
-      });
-    }
-    */
   });
 
-  // Verify OTP and change admin password
-  app.post("/api/admin/change-password-with-otp", async (req, res) => {
+  // Tenant password self-service is disabled; the platform owner manages it.
+  app.post("/api/admin/change-password-with-otp", async (_req, res) => {
     return res.status(403).json({
       success: false,
       message: "Business passwords are managed by the super administrator",
     });
-
-    /* Email OTP self-service is intentionally disabled.
-    const { otp, newPassword } = req.body;
-
-    if (!otp || !newPassword) {
-      return res.status(400).json({ success: false, message: "OTP and new password are required" });
-    }
-
-    if (newPassword.length < 6) {
-      return res.status(400).json({ success: false, message: "Password must be at least 6 characters" });
-    }
-
-    // Verify OTP
-    if (!adminOtpStore.otp || adminOtpStore.otp !== otp) {
-      return res.status(401).json({ success: false, message: "Invalid OTP" });
-    }
-
-    if (new Date() > adminOtpStore.expiresAt) {
-      return res.status(401).json({ success: false, message: "OTP has expired" });
-    }
-
-    // Clear OTP after use
-    adminOtpStore.otp = "";
-    adminOtpStore.expiresAt = new Date(0);
-
-    try {
-      // Update admin password in database
-      const adminUser = await storage.getUserByUsername("admin");
-      if (adminUser) {
-        await storage.updateUser(adminUser.id, { password: newPassword });
-      } else {
-        // Create admin user if doesn't exist
-        await db.insert(users).values({
-          username: "admin",
-          password: newPassword,
-          role: "admin",
-          email: process.env.ADMIN_EMAIL || "idusma0010@gmail.com",
-        } as any);
-      }
-
-      res.json({
-        success: true,
-        message: "Password changed successfully!",
-      });
-    } catch (error: any) {
-      console.error("Failed to update password:", error);
-      res.status(500).json({ success: false, message: "Failed to update password" });
-    }
-    */
   });
 
   // Get admin email dynamically from database for reports
@@ -10276,7 +10609,7 @@ export async function registerRoutes(
   app.post("/api/admin/send-daily-report", async (req, res) => {
     if (!requireSuperAdmin(req, res)) return;
     const { adminPassword, date } = req.body;
-    const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "admin123";
+    const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "";
 
     if (!adminPassword || adminPassword !== ADMIN_PASSWORD) {
       return res.status(401).json({ success: false, message: "Invalid admin password" });
@@ -10411,7 +10744,7 @@ export async function registerRoutes(
   app.post("/api/admin/send-report", async (req, res) => {
     if (!requireSuperAdmin(req, res)) return;
     const { adminPassword, period } = req.body;
-    const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "admin123";
+    const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "";
 
     if (!adminPassword || adminPassword !== ADMIN_PASSWORD) {
       return res.status(401).json({ success: false, message: "Invalid admin password" });
@@ -12234,28 +12567,6 @@ export async function registerRoutes(
       });
     } catch (err: any) {
       res.status(500).json({ message: err.message || "Failed to disperse company" });
-    }
-  });
-
-  app.post("/api/migrate-fix-reception-username", async (_req, res) => {
-    try {
-      const r1 = await db.update(orders).set({ entryBy: "Lorie" }).where(eq(orders.entryBy, "ReceptionUsername"));
-      const r2 = await db.update(bills).set({ createdBy: "Lorie" }).where(eq(bills.createdBy, "ReceptionUsername"));
-      const r3 = await db.update(orders).set({ tagBy: "Lorie" }).where(eq(orders.tagBy, "ReceptionUsername"));
-      const r4 = await db.update(orders).set({ packingBy: "Lorie" }).where(eq(orders.packingBy, "ReceptionUsername"));
-      const r5 = await db.update(orders).set({ washingBy: "Lorie" }).where(eq(orders.washingBy, "ReceptionUsername"));
-      const r6 = await db.update(users).set({ pin: "" }).where(ne(users.role, "admin"));
-      const verify = await db.select({ id: orders.id, orderNumber: orders.orderNumber, entryBy: orders.entryBy }).from(orders).where(eq(orders.orderNumber, "ORD-117245"));
-      if ((r2.rowCount || 0) > 0) {
-        storage.notifyLiveResourceUpdated("bills");
-      }
-      res.json({
-        message: "Fixed ReceptionUsername references and removed PINs from login accounts",
-        rowsAffected: { orders_entry: r1.rowCount, bills: r2.rowCount, tag: r3.rowCount, packing: r4.rowCount, washing: r5.rowCount, users: r6.rowCount },
-        verify_ORD117245: verify[0] || "not found"
-      });
-    } catch (err: any) {
-      res.status(500).json({ message: err.message });
     }
   });
 

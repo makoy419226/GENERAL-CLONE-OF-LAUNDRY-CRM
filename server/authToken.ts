@@ -9,7 +9,8 @@ export type AuthTokenPayload = {
   expiresAt: number;
 };
 
-const TOKEN_TTL_MS = 12 * 60 * 60 * 1000;
+export const AUTH_COOKIE_NAME = "laundry_crm_session";
+export const AUTH_TOKEN_TTL_MS = 12 * 60 * 60 * 1000;
 
 function getSigningSecret() {
   const configured = String(process.env.SESSION_SECRET || "").trim();
@@ -32,7 +33,7 @@ export function createAuthToken(
   payload: Omit<AuthTokenPayload, "expiresAt">,
 ): string {
   const encodedPayload = Buffer.from(
-    JSON.stringify({ ...payload, expiresAt: Date.now() + TOKEN_TTL_MS }),
+    JSON.stringify({ ...payload, expiresAt: Date.now() + AUTH_TOKEN_TTL_MS }),
   ).toString("base64url");
 
   return `${encodedPayload}.${sign(encodedPayload)}`;
@@ -73,6 +74,22 @@ export function verifyAuthToken(token: string): AuthTokenPayload | null {
 export function getRequestAuth(req: Request): AuthTokenPayload | null {
   const authorization = req.get("authorization") || "";
   const [scheme, token] = authorization.split(/\s+/, 2);
-  if (scheme?.toLowerCase() !== "bearer" || !token) return null;
-  return verifyAuthToken(token);
+  if (scheme?.toLowerCase() === "bearer" && token) {
+    return verifyAuthToken(token);
+  }
+
+  const cookieHeader = req.get("cookie") || "";
+  const cookieToken = cookieHeader
+    .split(";")
+    .map((part) => part.trim())
+    .find((part) => part.startsWith(`${AUTH_COOKIE_NAME}=`))
+    ?.slice(AUTH_COOKIE_NAME.length + 1);
+
+  if (!cookieToken) return null;
+
+  try {
+    return verifyAuthToken(decodeURIComponent(cookieToken));
+  } catch {
+    return null;
+  }
 }
