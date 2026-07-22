@@ -49,7 +49,7 @@ export default function Lockdown({ status, onAdminLogin }: LockdownProps) {
       const response = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username, password }),
+        body: JSON.stringify({ username, password, portal: "tenant" }),
       });
       const data = await response.json();
 
@@ -60,6 +60,7 @@ export default function Lockdown({ status, onAdminLogin }: LockdownProps) {
 
       localStorage.setItem("isLoggedIn", "true");
       localStorage.setItem("user", JSON.stringify(data.user));
+      localStorage.setItem("authToken", data.token);
       onAdminLogin(data.user);
       toast({
         title: "Admin access granted",

@@ -31,6 +31,26 @@ Development as appropriate:
 Use `.env.example` as the complete starting list. Do not add `.env` files to
 Git.
 
+### Super-admin Gmail SMTP
+
+For the platform-owner password-recovery channel, configure these variables in
+Vercel. Apply them to Production and to any Preview environment where email
+delivery should work:
+
+```text
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_SECURE=false
+SMTP_USER=idusma0010@gmail.com
+SMTP_PASS=<new Google app password without spaces>
+SMTP_FROM=idusma0010@gmail.com
+```
+
+Mark `SMTP_PASS` as **Sensitive** in Vercel. Never put an app password in this
+repository, `.env.example`, a screenshot, deployment log, or support message.
+After changing Vercel environment variables, redeploy the project so the new
+deployment receives them.
+
 The multi-business account bootstrap and platform-owner variables are described
 in `MULTI_BUSINESS_SETUP.md`.
 

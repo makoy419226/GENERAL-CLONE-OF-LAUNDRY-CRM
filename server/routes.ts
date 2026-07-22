@@ -39,7 +39,7 @@ import {
   companyContactSettings,
   reviews,
 } from "@shared/schema";
-import { eq, and, gt, ne, not, or, desc, sql, inArray } from "drizzle-orm";
+import { eq, and, gt, ne, not, or, desc, sql, inArray, isNull } from "drizzle-orm";
 import { createAuthToken, getRequestAuth } from "./authToken";
 import {
   sendAdminPasswordOtpEmail,
@@ -2232,8 +2232,20 @@ export async function registerRoutes(
 
   // Auth routes
   app.post("/api/auth/login", async (req, res) => {
-    const { username, password } = req.body;
-    const normalizedUsername = String(username || "").trim();
+    const parsedLogin = z.object({
+      username: z.string().trim().min(1).max(80),
+      password: z.string().min(1).max(200),
+      portal: z.enum(["tenant", "super_admin"]),
+    }).safeParse(req.body || {});
+
+    if (!parsedLogin.success) {
+      return res.status(400).json({
+        success: false,
+        message: "Username, password, and login portal are required",
+      });
+    }
+
+    const { username: normalizedUsername, password, portal: requestedPortal } = parsedLogin.data;
 
     await ensureMultiTenantFoundation();
 
@@ -2249,6 +2261,16 @@ export async function registerRoutes(
       );
 
     if (user) {
+      const portalMatchesAccount = requestedPortal === "super_admin"
+        ? user.role === "super_admin" && user.businessId === null
+        : user.role !== "super_admin" && user.businessId !== null;
+      if (!portalMatchesAccount) {
+        return res.status(401).json({
+          success: false,
+          message: "Invalid username or password",
+        });
+      }
+
       const lockdownStatus = await getAppLockdownStatus();
       if (lockdownStatus.enabled && user.role !== "admin" && user.role !== "super_admin") {
         return res.status(423).json({
@@ -2265,6 +2287,12 @@ export async function registerRoutes(
             .where(eq(laundryBusinesses.id, user.businessId))
             .then((rows) => rows[0] || null)
         : null;
+      if (user.businessId && !business) {
+        return res.status(403).json({
+          success: false,
+          message: "This tenant account is not assigned to an available organization",
+        });
+      }
       if (business && !business.active) {
         return res.status(403).json({
           success: false,
@@ -2304,7 +2332,7 @@ export async function registerRoutes(
       res.status(401).json({ message: "Sign in as the platform owner to continue" });
       return null;
     }
-    if (auth.role !== "super_admin") {
+    if (auth.role !== "super_admin" || auth.businessId !== null) {
       res.status(403).json({ message: "Super administrator access is required" });
       return null;
     }
@@ -2319,6 +2347,9 @@ export async function registerRoutes(
       .min(2, "Business slug is required")
       .max(80)
       .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, "Use lowercase letters, numbers, and hyphens"),
+    businessType: z.string().trim().min(2).max(80).default("laundry"),
+    timezone: z.string().trim().min(3).max(80).default("Asia/Dubai"),
+    currency: z.string().trim().length(3).transform((value) => value.toUpperCase()).default("AED"),
     contactEmail: z.string().trim().email().optional().or(z.literal("")),
     phone: z.string().trim().max(40).optional().or(z.literal("")),
     adminName: z.string().trim().min(2, "Administrator name is required").max(120),
@@ -2332,7 +2363,11 @@ export async function registerRoutes(
   });
 
   const updateBusinessInputSchema = z.object({
+    administratorId: z.coerce.number().int().positive(),
     name: z.string().trim().min(2).max(120),
+    businessType: z.string().trim().min(2).max(80),
+    timezone: z.string().trim().min(3).max(80),
+    currency: z.string().trim().length(3).transform((value) => value.toUpperCase()),
     contactEmail: z.string().trim().email().optional().or(z.literal("")),
     phone: z.string().trim().max(40).optional().or(z.literal("")),
     adminName: z.string().trim().min(2).max(120),
@@ -2346,17 +2381,43 @@ export async function registerRoutes(
     smtpFrom: z.string().trim().max(255).optional().or(z.literal("")),
   });
 
+  const tenantAccountRoleSchema = z.enum([
+    "admin",
+    "counter",
+    "reception",
+    "section",
+    "driver",
+  ]);
+
+  const createTenantAccountSchema = z.object({
+    name: z.string().trim().min(2, "Account name is required").max(120),
+    username: z.string().trim().min(3).max(80).regex(/^[A-Za-z0-9._-]+$/),
+    email: z.string().trim().email().optional().or(z.literal("")),
+    role: tenantAccountRoleSchema,
+    password: z.string().min(8, "Password must have at least 8 characters").max(200),
+    active: z.boolean().default(true),
+  });
+
+  const updateTenantAccountSchema = createTenantAccountSchema
+    .omit({ password: true })
+    .extend({ password: z.string().min(8).max(200).optional().or(z.literal("")) });
+
   const serializeManagedBusiness = (
     business: typeof laundryBusinesses.$inferSelect,
   ) => ({
     id: business.id,
     name: business.name,
     slug: business.slug,
+    businessType: business.businessType,
+    timezone: business.timezone,
+    currency: business.currency,
     active: business.active,
     contactEmail: business.contactEmail,
     phone: business.phone,
     logoUrl: business.logoUrl,
-    smtpConfigured: Boolean(business.smtpHost && business.smtpUser),
+    smtpConfigured: Boolean(
+      business.smtpHost && business.smtpUser && business.smtpPasswordEncrypted,
+    ),
     smtpHost: business.smtpHost,
     smtpPort: business.smtpPort,
     smtpSecure: business.smtpSecure,
@@ -2424,6 +2485,9 @@ export async function registerRoutes(
           .values({
             name: parsed.data.name,
             slug: parsed.data.slug,
+            businessType: parsed.data.businessType,
+            timezone: parsed.data.timezone,
+            currency: parsed.data.currency,
             contactEmail: parsed.data.contactEmail || null,
             phone: parsed.data.phone || null,
           })
@@ -2488,6 +2552,17 @@ export async function registerRoutes(
       return res.status(404).json({ message: "Business not found" });
     }
 
+    if (!active) {
+      const tenantUsers = await db
+        .select({ id: users.id })
+        .from(users)
+        .where(eq(users.businessId, businessId));
+      for (const tenantUser of tenantUsers) {
+        forceLogoutUsers.add(tenantUser.id);
+        sendForceLogoutToUser(tenantUser.id);
+      }
+    }
+
     res.json({
       message: `${business.name} is now ${active ? "active" : "suspended"}`,
       business: serializeManagedBusiness(business),
@@ -2517,6 +2592,9 @@ export async function registerRoutes(
           .update(laundryBusinesses)
           .set({
             name: parsed.data.name,
+            businessType: parsed.data.businessType,
+            timezone: parsed.data.timezone,
+            currency: parsed.data.currency,
             contactEmail: parsed.data.contactEmail || null,
             phone: parsed.data.phone || null,
             smtpHost: parsed.data.smtpHost || null,
@@ -2535,7 +2613,13 @@ export async function registerRoutes(
         const [administrator] = await tx
           .select()
           .from(users)
-          .where(and(eq(users.businessId, businessId), eq(users.role, "admin")))
+          .where(
+            and(
+              eq(users.id, parsed.data.administratorId),
+              eq(users.businessId, businessId),
+              eq(users.role, "admin"),
+            ),
+          )
           .limit(1);
         if (!administrator) throw new Error("Business administrator not found");
 
@@ -2581,6 +2665,150 @@ export async function registerRoutes(
     }
   });
 
+  app.post("/api/super-admin/businesses/:id/accounts", async (req, res) => {
+    if (!requireSuperAdmin(req, res)) return;
+    const businessId = Number(req.params.id);
+    if (!Number.isInteger(businessId)) {
+      return res.status(400).json({ message: "Choose a valid tenant" });
+    }
+
+    const parsed = createTenantAccountSchema.safeParse(req.body || {});
+    if (!parsed.success) {
+      return res.status(400).json({
+        message: parsed.error.issues[0]?.message || "Choose valid account details",
+      });
+    }
+
+    try {
+      const [business] = await db
+        .select({ id: laundryBusinesses.id, name: laundryBusinesses.name })
+        .from(laundryBusinesses)
+        .where(eq(laundryBusinesses.id, businessId))
+        .limit(1);
+      if (!business) {
+        return res.status(404).json({ message: "Tenant not found" });
+      }
+
+      const [account] = await db
+        .insert(users)
+        .values({
+          name: parsed.data.name,
+          username: parsed.data.username,
+          email: parsed.data.email || null,
+          role: parsed.data.role,
+          password: parsed.data.password,
+          pin: "00000",
+          active: parsed.data.active,
+          businessId,
+        })
+        .returning({
+          id: users.id,
+          username: users.username,
+          name: users.name,
+          email: users.email,
+          role: users.role,
+          active: users.active,
+          businessId: users.businessId,
+        });
+
+      res.status(201).json({
+        message: `${account.name || account.username} was added to ${business.name}`,
+        account,
+      });
+    } catch (error) {
+      const message = formatErrorMessage(error);
+      if (/unique|duplicate/i.test(message)) {
+        return res.status(409).json({ message: "That username is already in use" });
+      }
+      res.status(500).json({ message: "Failed to create the tenant account" });
+    }
+  });
+
+  app.put("/api/super-admin/accounts/:id", async (req, res) => {
+    if (!requireSuperAdmin(req, res)) return;
+    const accountId = Number(req.params.id);
+    if (!Number.isInteger(accountId)) {
+      return res.status(400).json({ message: "Choose a valid account" });
+    }
+
+    const parsed = updateTenantAccountSchema.safeParse(req.body || {});
+    if (!parsed.success) {
+      return res.status(400).json({
+        message: parsed.error.issues[0]?.message || "Choose valid account details",
+      });
+    }
+
+    try {
+      const [existing] = await db
+        .select()
+        .from(users)
+        .where(eq(users.id, accountId))
+        .limit(1);
+      if (!existing || !existing.businessId || existing.role === "super_admin") {
+        return res.status(404).json({ message: "Tenant account not found" });
+      }
+
+      const removesActiveAdministrator =
+        existing.role === "admin" &&
+        Boolean(existing.active) &&
+        (parsed.data.role !== "admin" || !parsed.data.active);
+      if (removesActiveAdministrator) {
+        const [replacementAdministrator] = await db
+          .select({ id: users.id })
+          .from(users)
+          .where(
+            and(
+              eq(users.businessId, existing.businessId),
+              eq(users.role, "admin"),
+              eq(users.active, true),
+              ne(users.id, existing.id),
+            ),
+          )
+          .limit(1);
+        if (!replacementAdministrator) {
+          return res.status(400).json({
+            message: "Create another active business administrator before changing this account",
+          });
+        }
+      }
+
+      const [account] = await db
+        .update(users)
+        .set({
+          name: parsed.data.name,
+          username: parsed.data.username,
+          email: parsed.data.email || null,
+          role: parsed.data.role,
+          active: parsed.data.active,
+          ...(parsed.data.password ? { password: parsed.data.password } : {}),
+        })
+        .where(eq(users.id, accountId))
+        .returning({
+          id: users.id,
+          username: users.username,
+          name: users.name,
+          email: users.email,
+          role: users.role,
+          active: users.active,
+          businessId: users.businessId,
+        });
+
+      forceLogoutUsers.add(account.id);
+      sendForceLogoutToUser(account.id);
+
+      res.json({
+        message: `${account.name || account.username} was updated`,
+        account,
+      });
+    } catch (error) {
+      const message = formatErrorMessage(error);
+      if (/unique|duplicate/i.test(message)) {
+        return res.status(409).json({ message: "That username is already in use" });
+      }
+      res.status(500).json({ message: "Failed to update the tenant account" });
+    }
+  });
+
   // Request password reset
   app.post("/api/auth/forgot-password", async (req, res) => {
     const { email } = req.body;
@@ -2595,17 +2823,23 @@ export async function registerRoutes(
     const [user] = await db
       .select()
       .from(users)
-      .where(sql`lower(${users.email}) = ${normalizedEmail}`);
+      .where(
+        and(
+          sql`lower(${users.email}) = ${normalizedEmail}`,
+          eq(users.role, "super_admin"),
+          isNull(users.businessId),
+        ),
+      );
 
     if (!user) {
       return res
         .status(404)
         .json({ success: false, message: "No user found with this email" });
     }
-    if (user.businessId) {
+    if (user.role !== "super_admin" || user.businessId) {
       return res.status(403).json({
         success: false,
-        message: "Business account credentials are managed by the super administrator",
+        message: "SMTP password recovery is available only for the platform owner",
       });
     }
 
@@ -2666,16 +2900,22 @@ export async function registerRoutes(
     const [user] = await db
       .select()
       .from(users)
-      .where(sql`lower(${users.email}) = ${normalizedEmail}`);
+      .where(
+        and(
+          sql`lower(${users.email}) = ${normalizedEmail}`,
+          eq(users.role, "super_admin"),
+          isNull(users.businessId),
+        ),
+      );
     if (!user) {
       return res
         .status(404)
         .json({ success: false, message: "User not found" });
     }
-    if (user.businessId) {
+    if (user.role !== "super_admin" || user.businessId) {
       return res.status(403).json({
         success: false,
-        message: "Business account credentials are managed by the super administrator",
+        message: "SMTP password recovery is available only for the platform owner",
       });
     }
 
@@ -2714,19 +2954,32 @@ export async function registerRoutes(
         });
     }
 
+    if (String(newPassword).length < 8) {
+      return res.status(400).json({
+        success: false,
+        message: "Password must have at least 8 characters",
+      });
+    }
+
     const [user] = await db
       .select()
       .from(users)
-      .where(sql`lower(${users.email}) = ${normalizedEmail}`);
+      .where(
+        and(
+          sql`lower(${users.email}) = ${normalizedEmail}`,
+          eq(users.role, "super_admin"),
+          isNull(users.businessId),
+        ),
+      );
     if (!user) {
       return res
         .status(404)
         .json({ success: false, message: "User not found" });
     }
-    if (user.businessId) {
+    if (user.role !== "super_admin" || user.businessId) {
       return res.status(403).json({
         success: false,
-        message: "Business account credentials are managed by the super administrator",
+        message: "SMTP password recovery is available only for the platform owner",
       });
     }
 

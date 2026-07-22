@@ -5,7 +5,20 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import { Eye, EyeOff, Loader2, Lock, User, Mail, KeyRound } from "lucide-react";
+import {
+  Building2,
+  ClipboardList,
+  Eye,
+  EyeOff,
+  KeyRound,
+  Loader2,
+  Lock,
+  Mail,
+  ServerCog,
+  ShieldCheck,
+  User,
+  Users,
+} from "lucide-react";
 import { AppleMotionBackdrop } from "@/components/AppleMotion";
 import { useToast } from "@/hooks/use-toast";
 import {
@@ -15,8 +28,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import logoImage from "@assets/image_1767220512226.png";
-import { getProductImage } from "@/lib/productImages";
 
 export interface UserInfo {
   id: number;
@@ -29,6 +40,8 @@ export interface UserInfo {
 interface LoginProps {
   onLogin: (user: UserInfo) => void;
 }
+
+type LoginPortal = "tenant" | "super_admin";
 
 const appleEase: [number, number, number, number] = [0.22, 1, 0.36, 1];
 
@@ -56,33 +69,12 @@ const loginPanelVariants = {
   },
 };
 
-const serviceGridVariants = {
-  hidden: { opacity: 0 },
-  visible: {
-    opacity: 1,
-    transition: {
-      staggerChildren: 0.03,
-      delayChildren: 0.09,
-    },
-  },
-};
-
-const serviceItemVariants = {
-  hidden: { opacity: 0, y: 9, scale: 0.965, borderRadius: 20 },
-  visible: {
-    opacity: 1,
-    y: 0,
-    scale: 1,
-    borderRadius: 8,
-    transition: { duration: 0.23, ease: appleEase },
-  },
-};
-
 export default function Login({ onLogin }: LoginProps) {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [loginPortal, setLoginPortal] = useState<LoginPortal>("tenant");
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   
@@ -93,7 +85,6 @@ export default function Login({ onLogin }: LoginProps) {
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [isResetting, setIsResetting] = useState(false);
-  const [fullScreenImage, setFullScreenImage] = useState<{name: string, image: string, origin: {x: number, y: number}} | null>(null);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -103,7 +94,7 @@ export default function Login({ onLogin }: LoginProps) {
       const response = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username, password }),
+        body: JSON.stringify({ username, password, portal: loginPortal }),
       });
 
       const data = await response.json();
@@ -114,10 +105,12 @@ export default function Login({ onLogin }: LoginProps) {
         localStorage.setItem("authToken", data.token);
         toast({
           title: `Welcome, ${data.user.name || data.user.username}!`,
-          description: `Logged in as ${data.user.role.charAt(0).toUpperCase() + data.user.role.slice(1)}`,
+          description: data.user.role === "super_admin"
+            ? "Platform Console access granted"
+            : `${data.user.businessName || "Tenant"} workspace access granted`,
         });
         onLogin(data.user);
-        setLocation("/");
+        setLocation(data.user.role === "super_admin" ? "/super-admin" : "/");
       } else {
         toast({
           title: "Login Failed",
@@ -134,6 +127,15 @@ export default function Login({ onLogin }: LoginProps) {
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const switchLoginPortal = (portal: LoginPortal) => {
+    if (portal === loginPortal || isLoading) return;
+    setLoginPortal(portal);
+    setUsername("");
+    setPassword("");
+    setShowPassword(false);
+    closeForgotPassword();
   };
 
   const handleRequestReset = async () => {
@@ -205,8 +207,8 @@ export default function Login({ onLogin }: LoginProps) {
       toast({ title: "Error", description: "Passwords do not match", variant: "destructive" });
       return;
     }
-    if (newPassword.length < 4) {
-      toast({ title: "Error", description: "Password must be at least 4 characters", variant: "destructive" });
+    if (newPassword.length < 8) {
+      toast({ title: "Error", description: "Password must be at least 8 characters", variant: "destructive" });
       return;
     }
     setIsResetting(true);
@@ -244,23 +246,8 @@ export default function Login({ onLogin }: LoginProps) {
     setConfirmPassword("");
   };
 
-  const services = [
-    { name: "Kandoora", color: "bg-blue-500" },
-    { name: "Abaya", color: "bg-purple-500" },
-    { name: "Saree", color: "bg-pink-500" },
-    { name: "Suit", color: "bg-indigo-500" },
-    { name: "Shirt", color: "bg-cyan-500" },
-    { name: "Jeans", color: "bg-teal-500" },
-    { name: "Blanket", color: "bg-orange-500" },
-    { name: "Carpet", color: "bg-red-500" },
-    { name: "Curtain", color: "bg-emerald-500" },
-    { name: "Towel", color: "bg-amber-500" },
-    { name: "Shoes", color: "bg-rose-500" },
-    { name: "Jacket", color: "bg-violet-500" },
-  ];
-
   return (
-    <div className="relative flex min-h-screen flex-col overflow-hidden bg-gradient-to-br from-primary/10 via-background to-emerald-500/5">
+    <div className="relative flex min-h-dvh flex-col overflow-hidden bg-gradient-to-br from-primary/10 via-background to-emerald-500/5">
       <AppleMotionBackdrop className="opacity-75" />
       <div className="relative z-10 flex flex-1 items-center justify-center p-4">
         <motion.div
@@ -271,32 +258,92 @@ export default function Login({ onLogin }: LoginProps) {
         >
           <motion.div className="w-full max-w-md" variants={loginPanelVariants}>
             <Card className="w-full shadow-2xl liquid-glass">
-              <CardHeader className="text-center pb-2">
-                <div className="flex justify-center mb-4">
-                  <img 
-                    src={logoImage} 
-                    alt="Liquide Washes Laundry" 
-                    className="h-20 object-contain"
-                    data-testid="img-login-logo"
-                  />
+              <CardHeader className="space-y-5 pb-3 text-center">
+                <div
+                  className="grid grid-cols-2 gap-1 rounded-xl border bg-muted/70 p-1"
+                  role="group"
+                  aria-label="Choose login portal"
+                >
+                  <button
+                    type="button"
+                    aria-pressed={loginPortal === "tenant"}
+                    disabled={isLoading}
+                    className={`flex min-h-12 items-center justify-center gap-2 rounded-lg px-3 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60 ${
+                      loginPortal === "tenant"
+                        ? "bg-background text-foreground shadow-sm"
+                        : "text-muted-foreground hover:text-foreground"
+                    }`}
+                    onClick={() => switchLoginPortal("tenant")}
+                    data-testid="button-tenant-login-portal"
+                  >
+                    <Building2 className="h-4 w-4" aria-hidden="true" />
+                    Tenant Login
+                  </button>
+                  <button
+                    type="button"
+                    aria-pressed={loginPortal === "super_admin"}
+                    disabled={isLoading}
+                    className={`flex min-h-12 items-center justify-center gap-2 rounded-lg px-3 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60 ${
+                      loginPortal === "super_admin"
+                        ? "bg-slate-950 text-white shadow-sm"
+                        : "text-muted-foreground hover:text-foreground"
+                    }`}
+                    onClick={() => switchLoginPortal("super_admin")}
+                    data-testid="button-super-admin-login-portal"
+                  >
+                    <ShieldCheck className="h-4 w-4" aria-hidden="true" />
+                    Super Admin
+                  </button>
                 </div>
-                <p className="text-sm text-muted-foreground mt-1">
-                  Liquide Washes Laundry Management System
-                </p>
+
+                <AnimatePresence mode="wait" initial={false}>
+                  <motion.div
+                    key={loginPortal}
+                    initial={{ opacity: 0, y: 5 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -4 }}
+                    transition={{ duration: 0.18, ease: appleEase }}
+                  >
+                    {loginPortal === "tenant" ? (
+                      <>
+                        <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 text-primary shadow-sm">
+                          <Building2 className="h-7 w-7" aria-hidden="true" />
+                        </div>
+                        <h1 className="text-xl font-bold tracking-tight">Tenant workspace</h1>
+                        <p className="mt-1 text-sm text-muted-foreground">
+                          Sign in to your assigned business account
+                        </p>
+                      </>
+                    ) : (
+                      <>
+                        <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-950 text-emerald-300 shadow-sm">
+                          <ShieldCheck className="h-7 w-7" aria-hidden="true" />
+                        </div>
+                        <h1 className="text-xl font-bold tracking-tight">Platform Console</h1>
+                        <p className="mt-1 text-sm text-muted-foreground">
+                          Restricted access for the platform owner
+                        </p>
+                      </>
+                    )}
+                  </motion.div>
+                </AnimatePresence>
               </CardHeader>
               <CardContent>
                 <form onSubmit={handleLogin} className="space-y-4">
                   <div className="space-y-2">
-                    <Label htmlFor="username">Username</Label>
+                    <Label htmlFor="username">
+                      {loginPortal === "super_admin" ? "Super admin username" : "Tenant username"}
+                    </Label>
                     <div className="relative">
-                      <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                      <User className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
                       <Input
                         id="username"
                         type="text"
                         placeholder="Enter username"
                         value={username}
                         onChange={(e) => setUsername(e.target.value)}
-                        className="pl-10"
+                        className="h-11 pl-10"
+                        autoComplete="username"
                         required
                         data-testid="input-username"
                       />
@@ -306,20 +353,21 @@ export default function Login({ onLogin }: LoginProps) {
                   <div className="space-y-2">
                     <Label htmlFor="password">Password</Label>
                     <div className="relative">
-                      <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                      <Lock className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
                       <Input
                         id="password"
                         type={showPassword ? "text" : "password"}
                         placeholder="Enter password"
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
-                        className="pl-10 pr-10"
+                        className="h-11 pl-10 pr-12"
+                        autoComplete="current-password"
                         required
                         data-testid="input-password"
                       />
                       <button
                         type="button"
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                        className="absolute right-0 top-0 flex h-11 w-11 items-center justify-center rounded-md text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                         onClick={() => setShowPassword((visible) => !visible)}
                         aria-label={showPassword ? "Hide password" : "Show password"}
                         aria-pressed={showPassword}
@@ -332,94 +380,141 @@ export default function Login({ onLogin }: LoginProps) {
 
                   <Button
                     type="submit"
-                    className="w-full"
-                    disabled={isLoading}
+                    className={`h-11 w-full gap-2 ${loginPortal === "super_admin" ? "bg-slate-950 text-white hover:bg-slate-800" : ""}`}
+                    disabled={isLoading || !username.trim() || !password}
                     data-testid="button-login"
                   >
                     {isLoading && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-                    Login
+                    {!isLoading && (loginPortal === "super_admin" ? <ShieldCheck className="h-4 w-4" /> : <Building2 className="h-4 w-4" />)}
+                    {loginPortal === "super_admin" ? "Open Platform Console" : "Open Tenant Workspace"}
                   </Button>
 
-                  <div className="text-center">
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      className="hidden text-sm text-muted-foreground"
-                      onClick={() => setShowForgotPassword(true)}
-                      data-testid="button-forgot-password"
-                    >
-                      Forgot Password?
-                    </Button>
-                  </div>
+                  {loginPortal === "super_admin" && (
+                    <div className="text-center">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        className="min-h-11 text-sm text-muted-foreground"
+                        onClick={() => setShowForgotPassword(true)}
+                        data-testid="button-forgot-password"
+                      >
+                        Forgot super admin password?
+                      </Button>
+                    </div>
+                  )}
                 </form>
 
-                <div className="mt-6 pt-4 border-t text-center text-xs text-muted-foreground space-y-1">
-                  <p className="font-semibold text-foreground">Liquide Washes Laundry</p>
-                  <p>Centra Market D/109, Al Dhanna City</p>
-                  <p>Al Ruwais, Abu Dhabi - UAE</p>
+                <div className="mt-5 border-t pt-4">
+                  {loginPortal === "tenant" ? (
+                    <div className="flex gap-3 rounded-lg bg-muted/60 p-3 text-left">
+                      <Users className="mt-0.5 h-4 w-4 shrink-0 text-primary" aria-hidden="true" />
+                      <p className="text-xs leading-relaxed text-muted-foreground">
+                        Your username and password are issued and managed by the platform super admin.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="flex gap-3 rounded-lg bg-emerald-500/10 p-3 text-left">
+                      <ServerCog className="mt-0.5 h-4 w-4 shrink-0 text-emerald-700 dark:text-emerald-300" aria-hidden="true" />
+                      <p className="text-xs leading-relaxed text-muted-foreground">
+                        Password recovery uses platform-managed email delivery. SMTP credentials remain protected inside the console.
+                      </p>
+                    </div>
+                  )}
                 </div>
               </CardContent>
             </Card>
           </motion.div>
 
           <motion.div className="hidden flex-1 lg:block" variants={loginPanelVariants}>
-            <div className="h-48 flex items-center justify-center mb-2 relative">
-              <div className="w-48 h-48 absolute">
-                <AnimatePresence mode="popLayout">
-                  {fullScreenImage && (
-                    <motion.img
-                      key={fullScreenImage.name}
-                      src={fullScreenImage.image}
-                      alt={fullScreenImage.name}
-                      className="h-full w-full object-contain drop-shadow-xl"
-                      initial={{ opacity: 0, y: 8, scale: 0.9, borderRadius: 28, filter: "blur(8px)" }}
-                      animate={{ opacity: 1, y: 0, scale: 1, borderRadius: 0, filter: "blur(0px)" }}
-                      exit={{ opacity: 0, y: -6, scale: 0.93, borderRadius: 20, filter: "blur(6px)" }}
-                      transition={{ duration: 0.19, ease: appleEase }}
-                      data-testid="img-fullscreen-service"
-                    />
-                  )}
-                </AnimatePresence>
-              </div>
-            </div>
-            <h2 className="text-2xl font-bold text-center mb-4 text-foreground">Our Laundry Services</h2>
-            <motion.div className="grid grid-cols-3 gap-3" variants={serviceGridVariants}>
-              {services.map((service, index) => (
+            <AnimatePresence mode="wait" initial={false}>
+              {loginPortal === "tenant" ? (
                 <motion.div
-                  key={index}
-                  className={`${service.color} relative cursor-pointer overflow-hidden rounded-lg p-4 text-center font-semibold text-white shadow-lg`}
-                  variants={serviceItemVariants}
-                  whileHover={{ y: -4, scale: 1.035, boxShadow: "0 18px 42px -26px rgba(15, 23, 42, 0.48)" }}
-                  whileTap={{ scale: 0.98 }}
-                  onMouseEnter={(e) => {
-                    const image = getProductImage(service.name);
-                    if (image) {
-                      const rect = e.currentTarget.getBoundingClientRect();
-                      const x = rect.left + rect.width / 2;
-                      const y = rect.top + rect.height / 2;
-                      setFullScreenImage({ name: service.name, image, origin: { x, y } });
-                    }
-                  }}
-                  onMouseLeave={() => setFullScreenImage(null)}
-                  data-testid={`service-box-${index}`}
+                  key="tenant-details"
+                  className="overflow-hidden rounded-3xl border bg-card/85 p-8 shadow-xl backdrop-blur"
+                  initial={{ opacity: 0, x: 12 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: -10 }}
+                  transition={{ duration: 0.2, ease: appleEase }}
                 >
-                  {service.name}
+                  <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-primary text-primary-foreground">
+                    <Building2 className="h-7 w-7" aria-hidden="true" />
+                  </div>
+                  <p className="mt-7 text-xs font-semibold uppercase tracking-[0.18em] text-primary">
+                    Tenant users
+                  </p>
+                  <h2 className="mt-2 text-3xl font-semibold tracking-tight text-foreground">Your business workspace</h2>
+                  <p className="mt-3 max-w-lg text-sm leading-6 text-muted-foreground">
+                    Sign in with the credentials issued for your organization. The platform automatically opens the correct tenant.
+                  </p>
+
+                  <div className="mt-8 space-y-3">
+                    {[
+                      { icon: ClipboardList, title: "Daily operations", detail: "Manage orders, status workflows, and service activity." },
+                      { icon: Users, title: "Customers and staff", detail: "Work only with records assigned to your organization." },
+                      { icon: KeyRound, title: "Managed access", detail: "Credentials and roles are controlled by the platform owner." },
+                    ].map((feature) => (
+                      <div key={feature.title} className="flex gap-4 rounded-xl border bg-background/70 p-4">
+                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                          <feature.icon className="h-5 w-5" aria-hidden="true" />
+                        </div>
+                        <div>
+                          <h3 className="font-semibold text-foreground">{feature.title}</h3>
+                          <p className="mt-1 text-sm leading-5 text-muted-foreground">{feature.detail}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 </motion.div>
-              ))}
-            </motion.div>
-            <p className="text-center mt-6 text-muted-foreground text-sm">
-              Professional cleaning for 43+ laundry items
-            </p>
+              ) : (
+                <motion.div
+                  key="super-admin-details"
+                  className="overflow-hidden rounded-3xl border border-slate-700 bg-slate-950 p-8 text-slate-100 shadow-2xl"
+                  initial={{ opacity: 0, x: 12 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: -10 }}
+                  transition={{ duration: 0.2, ease: appleEase }}
+                >
+                  <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-emerald-400 text-slate-950">
+                    <ShieldCheck className="h-7 w-7" aria-hidden="true" />
+                  </div>
+                  <p className="mt-7 text-xs font-semibold uppercase tracking-[0.18em] text-emerald-300">
+                    Platform owner only
+                  </p>
+                  <h2 className="mt-2 text-3xl font-semibold tracking-tight">One secure control plane</h2>
+                  <p className="mt-3 max-w-lg text-sm leading-6 text-slate-300">
+                    Manage every tenant without entering a tenant workspace or exposing platform credentials.
+                  </p>
+
+                  <div className="mt-8 space-y-3">
+                    {[
+                      { icon: Building2, title: "Tenant lifecycle", detail: "Create, activate, suspend, and configure organizations." },
+                      { icon: Users, title: "Account governance", detail: "Issue usernames, roles, and password resets for tenant users." },
+                      { icon: ServerCog, title: "SMTP ownership", detail: "Keep email credentials inside the protected Platform Console." },
+                    ].map((feature) => (
+                      <div key={feature.title} className="flex gap-4 rounded-xl border border-white/10 bg-white/5 p-4">
+                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-emerald-400/15 text-emerald-300">
+                          <feature.icon className="h-5 w-5" aria-hidden="true" />
+                        </div>
+                        <div>
+                          <h3 className="font-semibold">{feature.title}</h3>
+                          <p className="mt-1 text-sm leading-5 text-slate-400">{feature.detail}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
           </motion.div>
         </motion.div>
       </div>
 
       <Dialog open={showForgotPassword} onOpenChange={closeForgotPassword}>
-        <DialogContent aria-describedby={undefined} className="sm:max-w-md max-h-[85vh] overflow-y-auto">
+        <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Reset Password</DialogTitle>
+            <DialogTitle>Reset super admin password</DialogTitle>
             <DialogDescription>
-              {resetStep === "email" && "Enter your email address to receive a reset code."}
+              {resetStep === "email" && "Enter the platform-owner email address to receive a reset code."}
               {resetStep === "code" && "Enter the 6-digit code sent to your email."}
               {resetStep === "newPassword" && "Create a new password for your account."}
             </DialogDescription>
@@ -431,20 +526,20 @@ export default function Login({ onLogin }: LoginProps) {
                 <div className="space-y-2">
                   <Label htmlFor="reset-email">Email Address</Label>
                   <div className="relative">
-                    <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                    <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" aria-hidden="true" />
                     <Input
                       id="reset-email"
                       type="email"
                       placeholder="Enter your email"
                       value={resetEmail}
                       onChange={(e) => setResetEmail(e.target.value)}
-                      className="pl-10"
+                      className="h-11 pl-10"
                       data-testid="input-reset-email"
                     />
                   </div>
                 </div>
                 <Button
-                  className="w-full"
+                  className="h-11 w-full"
                   onClick={handleRequestReset}
                   disabled={isResetting}
                   data-testid="button-send-code"
@@ -460,21 +555,21 @@ export default function Login({ onLogin }: LoginProps) {
                 <div className="space-y-2">
                   <Label htmlFor="reset-code">Verification Code</Label>
                   <div className="relative">
-                    <KeyRound className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                    <KeyRound className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" aria-hidden="true" />
                     <Input
                       id="reset-code"
                       type="text"
                       placeholder="Enter 6-digit code"
                       value={resetCode}
                       onChange={(e) => setResetCode(e.target.value)}
-                      className="pl-10 text-center text-lg tracking-widest"
+                      className="h-11 pl-10 text-center text-lg tracking-widest"
                       maxLength={6}
                       data-testid="input-reset-code"
                     />
                   </div>
                 </div>
                 <Button
-                  className="w-full"
+                  className="h-11 w-full"
                   onClick={handleVerifyCode}
                   disabled={isResetting}
                   data-testid="button-verify-code"
@@ -484,7 +579,7 @@ export default function Login({ onLogin }: LoginProps) {
                 </Button>
                 <Button
                   variant="ghost"
-                  className="w-full"
+                  className="h-11 w-full"
                   onClick={() => setResetStep("email")}
                   data-testid="button-back-to-email"
                 >
@@ -498,14 +593,14 @@ export default function Login({ onLogin }: LoginProps) {
                 <div className="space-y-2">
                   <Label htmlFor="new-password">New Password</Label>
                   <div className="relative">
-                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" aria-hidden="true" />
                     <Input
                       id="new-password"
                       type="password"
                       placeholder="Enter new password"
                       value={newPassword}
                       onChange={(e) => setNewPassword(e.target.value)}
-                      className="pl-10"
+                      className="h-11 pl-10"
                       data-testid="input-new-password"
                     />
                   </div>
@@ -513,20 +608,20 @@ export default function Login({ onLogin }: LoginProps) {
                 <div className="space-y-2">
                   <Label htmlFor="confirm-password">Confirm Password</Label>
                   <div className="relative">
-                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" aria-hidden="true" />
                     <Input
                       id="confirm-password"
                       type="password"
                       placeholder="Confirm new password"
                       value={confirmPassword}
                       onChange={(e) => setConfirmPassword(e.target.value)}
-                      className="pl-10"
+                      className="h-11 pl-10"
                       data-testid="input-confirm-password"
                     />
                   </div>
                 </div>
                 <Button
-                  className="w-full"
+                  className="h-11 w-full"
                   onClick={handleResetPassword}
                   disabled={isResetting}
                   data-testid="button-reset-password"

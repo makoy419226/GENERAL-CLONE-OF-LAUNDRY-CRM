@@ -26,6 +26,7 @@ import TrackOrder from "@/pages/TrackOrder";
 import AdminSettings from "@/pages/AdminSettings";
 import DeliveryDashboard from "@/pages/DeliveryDashboard";
 import SuperAdmin from "@/pages/SuperAdmin";
+import { PlatformConsoleShell } from "@/components/platform/PlatformConsoleShell";
 import NotFound from "@/pages/not-found";
 import {
   useLiveBillsStream,
@@ -84,8 +85,11 @@ function Router() {
   if (userRole === "super_admin") {
     return (
       <Switch>
-        <Route path="/" component={SuperAdmin} />
+        <Route path="/" component={() => <Redirect to="/super-admin" />} />
         <Route path="/super-admin" component={SuperAdmin} />
+        <Route path="/super-admin/tenants" component={SuperAdmin} />
+        <Route path="/super-admin/accounts" component={SuperAdmin} />
+        <Route path="/super-admin/email" component={SuperAdmin} />
         <Route><Redirect to="/super-admin" /></Route>
       </Switch>
     );
@@ -563,6 +567,25 @@ function App() {
             {floatingThemeToggle}
             <Login onLogin={handleLogin} />
             <Toaster />
+          </AppleMotionProvider>
+        </TooltipProvider>
+      </QueryClientProvider>
+    );
+  }
+
+  if (user?.role === "super_admin") {
+    return (
+      <QueryClientProvider client={queryClient}>
+        <TooltipProvider>
+          <AppleMotionProvider>
+            <UserContext.Provider value={user}>
+              <PlatformConsoleShell user={user} onLogout={handleLogout}>
+                <RouteMotionShell location={location}>
+                  <Router />
+                </RouteMotionShell>
+              </PlatformConsoleShell>
+              <Toaster />
+            </UserContext.Provider>
           </AppleMotionProvider>
         </TooltipProvider>
       </QueryClientProvider>

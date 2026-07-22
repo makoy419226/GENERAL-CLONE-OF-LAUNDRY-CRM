@@ -1,7 +1,7 @@
 import { useLocation } from "wouter";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
-import { LayoutDashboard, Package, Users, FileText, List, Phone, TrendingUp, LogOut, Shield, UserCog, Wallet, ClipboardList, HardHat, AlertTriangle, Menu, X, Search, Settings, ChevronDown, Truck, Building2 } from "lucide-react";
+import { LayoutDashboard, Package, Users, FileText, List, Phone, TrendingUp, LogOut, Shield, UserCog, Wallet, ClipboardList, HardHat, AlertTriangle, Menu, X, Search, Settings, ChevronDown, Truck } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { startTransition, useState, useEffect, type MouseEvent } from "react";
 import logoImage from "@assets/image_1767220512226.png";
@@ -103,19 +103,11 @@ export function Sidebar({ user, onLogout }: SidebarProps) {
 
   const actualUserRole = user?.role || "counter";
   const userRole = actualUserRole;
-  const isSuperAdmin = visibleLocation === "/super-admin" || (actualUserRole === "super_admin" && visibleLocation === "/");
   const isAdmin = userRole === "admin";
   const isCounter = userRole === "counter";
   const isAdminOrCounter = isAdmin || isCounter;
 
   const navGroups = [
-    {
-      label: "Platform",
-      collapsible: false,
-      items: [
-        { href: "/super-admin", icon: Building2, iconClassName: "border-violet-200 bg-violet-100 text-violet-700 group-hover:bg-violet-200", label: "Businesses & Accounts", active: isSuperAdmin, testId: "nav-super-admin", roles: ["super_admin"] },
-      ]
-    },
     {
       label: "Operations",
       collapsible: false,
