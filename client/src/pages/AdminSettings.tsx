@@ -2532,7 +2532,7 @@ export default function AdminSettings() {
           </CardContent>
         </Card>
 
-        <Card className="mt-6">
+        {false && <Card className="mt-6">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-primary">
               <Mail className="w-5 h-5" />
@@ -2843,7 +2843,7 @@ export default function AdminSettings() {
               </div>
             </div>
           </CardContent>
-        </Card>
+        </Card>}
       </main>
     </div>
   );

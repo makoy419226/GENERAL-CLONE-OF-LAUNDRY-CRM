@@ -1,4 +1,5 @@
 import nodemailer from "nodemailer";
+import { resolve4 } from "node:dns/promises";
 import { getUncachableResendClient } from "./resend";
 
 type DeliveryChannel = "smtp" | "resend" | "development-preview";
@@ -43,23 +44,48 @@ async function sendEmailViaSmtp({ toEmail, subject, html }: EmailPayload) {
   const port = parseInt(process.env.SMTP_PORT || "587", 10);
   const secure = process.env.SMTP_SECURE === "true" || port === 465;
   const fromEmail = process.env.SMTP_FROM || process.env.SMTP_USER;
+  const smtpHost = process.env.SMTP_HOST || "smtp.gmail.com";
+  let lastError: unknown;
 
-  const transporter = nodemailer.createTransport({
-    host: process.env.SMTP_HOST || "smtp.gmail.com",
-    port,
-    secure,
-    auth: {
-      user: process.env.SMTP_USER,
-      pass: process.env.SMTP_PASS,
-    },
-  });
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    try {
+      // Vercel functions can occasionally exhaust getaddrinfo resources. DNS
+      // resolution through c-ares avoids that path; servername keeps TLS
+      // certificate verification tied to the configured SMTP hostname.
+      const addresses = await resolve4(smtpHost);
+      const connectionHost = addresses[(attempt - 1) % addresses.length] || smtpHost;
+      const transporter = nodemailer.createTransport({
+        host: connectionHost,
+        port,
+        secure,
+        requireTLS: !secure,
+        connectionTimeout: 10_000,
+        greetingTimeout: 10_000,
+        socketTimeout: 20_000,
+        tls: { servername: smtpHost },
+        auth: {
+          user: process.env.SMTP_USER,
+          pass: process.env.SMTP_PASS,
+        },
+      });
 
-  await transporter.sendMail({
-    from: `"Liquid Washes Laundry" <${fromEmail}>`,
-    to: toEmail,
-    subject,
-    html,
-  });
+      await transporter.sendMail({
+        from: `"Liquid Washes Laundry" <${fromEmail}>`,
+        to: toEmail,
+        subject,
+        html,
+      });
+      transporter.close();
+      return;
+    } catch (error) {
+      lastError = error;
+      if (attempt < 3) {
+        await new Promise((resolve) => setTimeout(resolve, attempt * 200));
+      }
+    }
+  }
+
+  throw lastError;
 }
 
 async function sendEmailViaResend({ toEmail, subject, html }: EmailPayload) {

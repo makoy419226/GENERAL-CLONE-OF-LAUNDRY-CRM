@@ -78,7 +78,6 @@ import {
   isDatabaseConnectionError,
 } from "./errorFormatting";
 import { ensureMultiTenantFoundation } from "./multiTenant";
-import { encryptBusinessSecret } from "./businessSecrets";
 import {
   resolveRequestIdentity,
   type TenantRequestContext,
@@ -2534,13 +2533,7 @@ export async function registerRoutes(
     adminName: z.string().trim().min(2).max(120),
     adminUsername: z.string().trim().min(3).max(80).regex(/^[A-Za-z0-9._-]+$/),
     adminPassword: z.string().min(8).max(200).optional().or(z.literal("")),
-    smtpHost: z.string().trim().max(255).optional().or(z.literal("")),
-    smtpPort: z.coerce.number().int().min(1).max(65535).default(587),
-    smtpSecure: z.boolean().default(false),
-    smtpUser: z.string().trim().max(255).optional().or(z.literal("")),
-    smtpPassword: z.string().max(500).optional().or(z.literal("")),
-    smtpFrom: z.string().trim().max(255).optional().or(z.literal("")),
-  });
+  }).strict();
 
   const tenantAccountRoleSchema = z.enum([
     "admin",
@@ -2576,15 +2569,6 @@ export async function registerRoutes(
     contactEmail: business.contactEmail,
     phone: business.phone,
     logoUrl: business.logoUrl,
-    smtpConfigured: Boolean(
-      business.smtpHost && business.smtpUser && business.smtpPasswordEncrypted,
-    ),
-    smtpHost: business.smtpHost,
-    smtpPort: business.smtpPort,
-    smtpSecure: business.smtpSecure,
-    smtpUser: business.smtpUser,
-    smtpFrom: business.smtpFrom,
-    smtpPasswordSet: Boolean(business.smtpPasswordEncrypted),
     createdAt: business.createdAt,
     updatedAt: business.updatedAt,
   });
@@ -2740,15 +2724,12 @@ export async function registerRoutes(
     const parsed = updateBusinessInputSchema.safeParse(req.body || {});
     if (!parsed.success) {
       return res.status(400).json({
-        message: parsed.error.issues[0]?.message || "Choose valid account and SMTP settings",
+        message: parsed.error.issues[0]?.message || "Choose valid business and account settings",
       });
     }
 
     try {
       const result = await db.transaction(async (tx) => {
-        const smtpPasswordUpdate = parsed.data.smtpPassword
-          ? { smtpPasswordEncrypted: encryptBusinessSecret(parsed.data.smtpPassword) }
-          : {};
         const [business] = await tx
           .update(laundryBusinesses)
           .set({
@@ -2758,12 +2739,6 @@ export async function registerRoutes(
             currency: parsed.data.currency,
             contactEmail: parsed.data.contactEmail || null,
             phone: parsed.data.phone || null,
-            smtpHost: parsed.data.smtpHost || null,
-            smtpPort: parsed.data.smtpPort,
-            smtpSecure: parsed.data.smtpSecure,
-            smtpUser: parsed.data.smtpUser || null,
-            smtpFrom: parsed.data.smtpFrom || null,
-            ...smtpPasswordUpdate,
             updatedAt: new Date(),
           })
           .where(eq(laundryBusinesses.id, businessId))
@@ -3388,10 +3363,7 @@ export async function registerRoutes(
         .status(500)
         .json({
           success: false,
-          message:
-            err instanceof Error
-              ? err.message
-              : "Failed to send email. Please try again.",
+          message: "Email delivery is temporarily unavailable. Please try again.",
         });
     }
   });

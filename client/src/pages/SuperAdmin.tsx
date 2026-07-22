@@ -7,13 +7,11 @@ import {
   CircleOff,
   Eye,
   EyeOff,
-  KeyRound,
   Loader2,
   Pencil,
   Plus,
   RefreshCw,
   Search,
-  ServerCog,
   ShieldAlert,
   ShieldCheck,
   Trash2,
@@ -76,13 +74,6 @@ type ManagedBusiness = {
   active: boolean;
   contactEmail: string | null;
   phone: string | null;
-  smtpConfigured: boolean;
-  smtpHost: string | null;
-  smtpPort: number | null;
-  smtpSecure: boolean | null;
-  smtpUser: string | null;
-  smtpFrom: string | null;
-  smtpPasswordSet: boolean;
   createdAt: string;
   accountCount: number;
   administrator: PlatformAccount | null;
@@ -93,9 +84,9 @@ type PlatformOverview = {
   accounts: PlatformAccount[];
 };
 
-type ConsoleSection = "overview" | "tenants" | "accounts" | "email";
+type ConsoleSection = "overview" | "tenants" | "accounts";
 type TenantStatusFilter = "all" | "active" | "suspended";
-type ManageTab = "profile" | "accounts" | "administrator" | "email";
+type ManageTab = "profile" | "accounts" | "administrator";
 
 const BUSINESS_TYPES = [
   { value: "laundry", label: "Laundry services" },
@@ -146,12 +137,6 @@ const EMPTY_EDIT_FORM = {
   adminName: "",
   adminUsername: "",
   adminPassword: "",
-  smtpHost: "",
-  smtpPort: "587",
-  smtpSecure: false,
-  smtpUser: "",
-  smtpPassword: "",
-  smtpFrom: "",
 };
 
 const EMPTY_ACCOUNT_FORM = {
@@ -182,7 +167,6 @@ function formatLabel(value: string) {
 function getSection(location: string): ConsoleSection {
   if (location.endsWith("/tenants")) return "tenants";
   if (location.endsWith("/accounts")) return "accounts";
-  if (location.endsWith("/email")) return "email";
   return "overview";
 }
 
@@ -400,7 +384,6 @@ export default function SuperAdmin() {
         {
           ...editForm,
           administratorId: businessToEdit.administrator?.id,
-          smtpPort: Number(editForm.smtpPort),
         },
       );
       return response.json();
@@ -547,12 +530,6 @@ export default function SuperAdmin() {
       adminName: business.administrator?.name || "",
       adminUsername: business.administrator?.username || "",
       adminPassword: "",
-      smtpHost: business.smtpHost || "",
-      smtpPort: String(business.smtpPort || 587),
-      smtpSecure: Boolean(business.smtpSecure),
-      smtpUser: business.smtpUser || "",
-      smtpPassword: "",
-      smtpFrom: business.smtpFrom || "",
     });
   };
 
@@ -679,7 +656,6 @@ export default function SuperAdmin() {
   }
 
   const activeTenants = businesses.filter((business) => business.active).length;
-  const smtpReady = businesses.filter((business) => business.smtpConfigured).length;
   const inactiveAccounts = tenantAccounts.filter((account) => !account.active).length;
 
   return (
@@ -694,7 +670,7 @@ export default function SuperAdmin() {
               </div>
               <h2 className="text-2xl font-semibold tracking-tight lg:text-3xl">Multi-tenant operations</h2>
               <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
-                Monitor tenant health, account access, and platform-managed email from one control plane.
+                Monitor tenant health and account access from one control plane. SMTP remains platform-owner infrastructure.
               </p>
             </div>
             <Button className="h-11 gap-2" onClick={() => setTenantDialogOpen(true)}>
@@ -702,11 +678,10 @@ export default function SuperAdmin() {
             </Button>
           </div>
 
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
             <SummaryCard label="Total tenants" value={businesses.length} detail="All registered organizations" icon={Building2} />
             <SummaryCard label="Active tenants" value={activeTenants} detail={`${businesses.length - activeTenants} suspended`} icon={CheckCircle2} />
             <SummaryCard label="Tenant accounts" value={tenantAccounts.length} detail={`${inactiveAccounts} inactive`} icon={Users} />
-            <SummaryCard label="Email ready" value={smtpReady} detail={`${businesses.length - smtpReady} need configuration`} icon={ServerCog} />
           </div>
 
           <div className="grid gap-4 lg:grid-cols-[minmax(0,1.5fr)_minmax(18rem,0.75fr)]">
@@ -752,7 +727,6 @@ export default function SuperAdmin() {
               </CardHeader>
               <CardContent className="space-y-3">
                 <AttentionRow label="Suspended tenants" value={businesses.length - activeTenants} onClick={() => navigate("/super-admin/tenants")} />
-                <AttentionRow label="Email not configured" value={businesses.length - smtpReady} onClick={() => navigate("/super-admin/email")} />
                 <AttentionRow label="Inactive accounts" value={inactiveAccounts} onClick={() => navigate("/super-admin/accounts")} />
               </CardContent>
             </Card>
@@ -787,7 +761,7 @@ export default function SuperAdmin() {
               ) : (
                 <div className="overflow-x-auto">
                   <Table>
-                    <TableHeader><TableRow><TableHead>Tenant</TableHead><TableHead>Type</TableHead><TableHead>Administrator</TableHead><TableHead>Accounts</TableHead><TableHead>Region</TableHead><TableHead>Email</TableHead><TableHead className="text-right">Access</TableHead></TableRow></TableHeader>
+                    <TableHeader><TableRow><TableHead>Tenant</TableHead><TableHead>Type</TableHead><TableHead>Administrator</TableHead><TableHead>Accounts</TableHead><TableHead>Region</TableHead><TableHead className="text-right">Access</TableHead></TableRow></TableHeader>
                     <TableBody>
                       {filteredBusinesses.map((business) => (
                         <TableRow key={business.id}>
@@ -796,7 +770,6 @@ export default function SuperAdmin() {
                           <TableCell><p>{business.administrator?.name || "Not assigned"}</p><p className="text-xs text-muted-foreground">{business.administrator?.username || "—"}</p></TableCell>
                           <TableCell className="tabular-nums">{business.accountCount}</TableCell>
                           <TableCell><p>{business.currency}</p><p className="text-xs text-muted-foreground">{business.timezone}</p></TableCell>
-                          <TableCell><Badge variant={business.smtpConfigured ? "default" : "outline"}>{business.smtpConfigured ? "Ready" : "Setup needed"}</Badge></TableCell>
                           <TableCell>
                             <div className="flex items-center justify-end gap-2">
                               <Button variant="outline" size="sm" className="h-10 gap-2" onClick={() => openTenantEditor(business)}><Pencil className="h-3.5 w-3.5" />Manage</Button>
@@ -844,39 +817,6 @@ export default function SuperAdmin() {
               )}
             </CardContent>
           </Card>
-        </>
-      )}
-
-      {section === "email" && (
-        <>
-          <SectionHeading title="Tenant email configuration" description="SMTP credentials are encrypted and can only be managed from this platform-owner console." />
-          <div className="rounded-xl border border-primary/20 bg-primary/5 p-4 text-sm">
-            <div className="flex gap-3">
-              <KeyRound className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
-              <div><p className="font-semibold">Secrets stay protected</p><p className="mt-1 text-muted-foreground">Saved SMTP passwords are never returned to the browser. Leaving the password field blank preserves the existing secret.</p></div>
-            </div>
-          </div>
-          <div className="grid gap-4 lg:grid-cols-2">
-            {businesses.map((business) => (
-              <Card key={business.id}>
-                <CardHeader>
-                  <div className="flex items-start justify-between gap-4">
-                    <div><CardTitle className="text-lg">{business.name}</CardTitle><CardDescription>{business.smtpFrom || business.contactEmail || "No sender address"}</CardDescription></div>
-                    <Badge variant={business.smtpConfigured ? "default" : "outline"}>{business.smtpConfigured ? "SMTP ready" : "Setup needed"}</Badge>
-                  </div>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <dl className="grid grid-cols-[7rem_minmax(0,1fr)] gap-x-3 gap-y-2 text-sm">
-                    <dt className="text-muted-foreground">Host</dt><dd className="truncate font-medium">{business.smtpHost || "Not configured"}</dd>
-                    <dt className="text-muted-foreground">Username</dt><dd className="truncate font-medium">{business.smtpUser || "Not configured"}</dd>
-                    <dt className="text-muted-foreground">Security</dt><dd className="font-medium">{business.smtpSecure ? "TLS on connect" : "STARTTLS"} · port {business.smtpPort || 587}</dd>
-                  </dl>
-                  <Button variant="outline" className="h-11 w-full gap-2" onClick={() => openTenantEditor(business, "email")}><ServerCog className="h-4 w-4" />Configure email</Button>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-          {!businesses.length && <EmptySearch message="Create a tenant before configuring email." />}
         </>
       )}
 
@@ -1188,9 +1128,9 @@ function ManageTenantDialog({
   return (
     <Dialog open={Boolean(business)} onOpenChange={(open) => { if (!open) onClose(); }}>
       <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-4xl">
-        <DialogHeader><DialogTitle>Manage {business?.name || "tenant"}</DialogTitle><DialogDescription>All business controls stay together: profile, tenant accounts, administrator access, and email.</DialogDescription></DialogHeader>
+        <DialogHeader><DialogTitle>Manage {business?.name || "tenant"}</DialogTitle><DialogDescription>Manage the business profile, tenant accounts, and administrator access.</DialogDescription></DialogHeader>
         <Tabs value={tab} onValueChange={(value) => setTab(value as ManageTab)}>
-          <TabsList className="grid h-auto w-full grid-cols-2 sm:grid-cols-4"><TabsTrigger className="min-h-11" value="profile">Profile</TabsTrigger><TabsTrigger className="min-h-11" value="accounts">Accounts</TabsTrigger><TabsTrigger className="min-h-11" value="administrator">Administrator</TabsTrigger><TabsTrigger className="min-h-11" value="email">Email</TabsTrigger></TabsList>
+          <TabsList className="grid h-auto w-full grid-cols-3"><TabsTrigger className="min-h-11" value="profile">Profile</TabsTrigger><TabsTrigger className="min-h-11" value="accounts">Accounts</TabsTrigger><TabsTrigger className="min-h-11" value="administrator">Administrator</TabsTrigger></TabsList>
           <TabsContent value="profile" className="grid gap-5 py-4 sm:grid-cols-2">
             <div className="space-y-2 sm:col-span-2"><Label htmlFor="edit-tenant-name">Organization name</Label><Input id="edit-tenant-name" className="h-11" value={form.name} onChange={(event) => updateForm("name", event.target.value)} /></div>
             <div className="space-y-2"><Label>Business type</Label><Select value={form.businessType} onValueChange={(value) => updateForm("businessType", value)}><SelectTrigger className="h-11"><SelectValue /></SelectTrigger><SelectContent>{BUSINESS_TYPES.map((item) => <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>)}</SelectContent></Select></div>
@@ -1225,15 +1165,6 @@ function ManageTenantDialog({
             <div className="space-y-2"><Label htmlFor="edit-admin-name">Administrator name</Label><Input id="edit-admin-name" className="h-11" value={form.adminName} onChange={(event) => updateForm("adminName", event.target.value)} /></div>
             <div className="space-y-2"><Label htmlFor="edit-admin-username">Login username</Label><Input id="edit-admin-username" className="h-11" value={form.adminUsername} onChange={(event) => updateForm("adminUsername", event.target.value)} autoComplete="off" /></div>
             <div className="sm:col-span-2"><PasswordField id="edit-admin-password" label="New password" value={form.adminPassword} onChange={(value) => updateForm("adminPassword", value)} placeholder="Leave blank to keep the current password" helper="Use at least 8 characters when resetting the password." /></div>
-          </TabsContent>
-          <TabsContent value="email" className="grid gap-5 py-4 sm:grid-cols-2">
-            <div className="rounded-lg border border-primary/20 bg-primary/5 p-3 text-sm sm:col-span-2"><div className="flex gap-2"><KeyRound className="mt-0.5 h-4 w-4 shrink-0 text-primary" /><p>SMTP passwords are encrypted and never returned by the API.</p></div></div>
-            <div className="space-y-2"><Label htmlFor="smtp-host">SMTP host</Label><Input id="smtp-host" className="h-11" value={form.smtpHost} onChange={(event) => updateForm("smtpHost", event.target.value)} placeholder="smtp.example.com" /></div>
-            <div className="space-y-2"><Label htmlFor="smtp-port">Port</Label><Input id="smtp-port" className="h-11" type="number" min={1} max={65535} value={form.smtpPort} onChange={(event) => updateForm("smtpPort", event.target.value)} /></div>
-            <div className="space-y-2"><Label htmlFor="smtp-user">SMTP username</Label><Input id="smtp-user" className="h-11" value={form.smtpUser} onChange={(event) => updateForm("smtpUser", event.target.value)} autoComplete="off" /></div>
-            <div className="space-y-2"><Label htmlFor="smtp-from">From address</Label><Input id="smtp-from" className="h-11" type="email" value={form.smtpFrom} onChange={(event) => updateForm("smtpFrom", event.target.value)} placeholder="reports@example.com" /></div>
-            <div className="sm:col-span-2"><PasswordField id="smtp-password" label="SMTP password" value={form.smtpPassword} onChange={(value) => updateForm("smtpPassword", value)} placeholder={business?.smtpPasswordSet ? "Password saved — leave blank to keep it" : "Enter SMTP password"} /></div>
-            <div className="flex min-h-14 items-center justify-between rounded-lg border p-3 sm:col-span-2"><div><Label htmlFor="smtp-secure">TLS on connect</Label><p className="text-xs text-muted-foreground">Usually enabled for port 465; leave off for STARTTLS on port 587.</p></div><Switch id="smtp-secure" checked={form.smtpSecure} onCheckedChange={(checked) => updateForm("smtpSecure", checked)} /></div>
           </TabsContent>
         </Tabs>
         {error && <p className="text-sm text-destructive" role="alert">{error}</p>}

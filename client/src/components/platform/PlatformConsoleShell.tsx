@@ -4,7 +4,6 @@ import {
   Building2,
   LayoutDashboard,
   LogOut,
-  Mail,
   ShieldCheck,
   Users,
 } from "lucide-react";
@@ -22,7 +21,6 @@ const navigation = [
   { href: "/super-admin", label: "Overview", icon: LayoutDashboard },
   { href: "/super-admin/tenants", label: "Tenants", icon: Building2 },
   { href: "/super-admin/accounts", label: "Accounts", icon: Users },
-  { href: "/super-admin/email", label: "Email", icon: Mail },
 ];
 
 function isActiveRoute(location: string, href: string) {
