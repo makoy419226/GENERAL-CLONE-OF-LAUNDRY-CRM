@@ -1,0 +1,14 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "pEOIkBVjG-BZVe3sSTfgI"
+uri = "file://hostinger-deploy.tar.gz"
+type = "unspecified"
+title = "Hostinger Production Files (tar.gz)"
+
+[[outputs]]
+id = "iP4A1yefNP4TZaidXDQms"
+uri = "file://hostinger-deploy.zip"
+type = "unspecified"
+title = "Hostinger Deployment Package (ZIP)"

@@ -1,0 +1,62 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1769014024483,
+      "tag": "0000_flippant_giant_man",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1771959600000,
+      "tag": "0001_add_urgent_price_and_has_sizes",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1774790860093,
+      "tag": "0002_warm_scrambler",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1776162228890,
+      "tag": "0003_purple_shiva",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1776327953718,
+      "tag": "0004_smooth_bishop",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1778129488564,
+      "tag": "0005_tan_maginty",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1779390000000,
+      "tag": "0006_sales_report_schedule_settings",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1781164800000,
+      "tag": "0007_delivery_charge",
+      "breakpoints": true
+    }
+  ]
+}
