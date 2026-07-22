@@ -47,11 +47,11 @@ const removeBulkIndicator = (value: string | null | undefined) =>
     : value;
 
 function createTransporter() {
-  const host = process.env.SMTP_HOST || 'smtp.gmail.com';
-  const port = parseInt(process.env.SMTP_PORT || '587');
-  const secure = process.env.SMTP_SECURE === 'true';
-  const user = process.env.SMTP_USER;
-  const pass = process.env.SMTP_PASS;
+  const host = process.env.SMTP_HOST?.trim() || 'smtp.gmail.com';
+  const port = parseInt(process.env.SMTP_PORT?.trim() || '587');
+  const secure = process.env.SMTP_SECURE?.trim().toLowerCase() === 'true';
+  const user = process.env.SMTP_USER?.trim();
+  const pass = process.env.SMTP_PASS?.replace(/\s+/g, '');
 
   if (!user || !pass) {
     throw new Error('SMTP credentials not configured. Please set SMTP_USER and SMTP_PASS environment variables.');
@@ -70,7 +70,7 @@ function createTransporter() {
 
 export async function sendDailySalesReportEmailSMTP(toEmail: string, salesData: DailySalesData) {
   const transporter = createTransporter();
-  const fromEmail = process.env.SMTP_FROM || process.env.SMTP_USER;
+  const fromEmail = process.env.SMTP_FROM?.trim() || process.env.SMTP_USER?.trim();
 
   const topItemsHtml = salesData.topItems.length > 0 
     ? salesData.topItems.map(item => `<li>${item.name}: ${item.count} orders</li>`).join('')
@@ -199,7 +199,7 @@ const periodItemLabels: Record<ReportPeriod, string> = {
 
 export async function sendSalesReportEmailSMTP(toEmail: string, salesData: SalesReportData) {
   const transporter = createTransporter();
-  const fromEmail = process.env.SMTP_FROM || process.env.SMTP_USER;
+  const fromEmail = process.env.SMTP_FROM?.trim() || process.env.SMTP_USER?.trim();
 
   const topItemsHtml = salesData.topItems.length > 0 
     ? salesData.topItems.map(item => `<li>${item.name}: ${item.count} orders</li>`).join('')

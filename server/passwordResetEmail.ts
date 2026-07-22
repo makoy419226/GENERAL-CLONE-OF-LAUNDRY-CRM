@@ -17,7 +17,7 @@ export interface PasswordResetDeliveryResult {
 }
 
 function hasSmtpConfig() {
-  return Boolean(process.env.SMTP_USER && process.env.SMTP_PASS);
+  return Boolean(process.env.SMTP_USER?.trim() && process.env.SMTP_PASS?.trim());
 }
 
 function hasResendConfig() {
@@ -41,10 +41,12 @@ function maskEmail(email: string) {
 }
 
 async function sendEmailViaSmtp({ toEmail, subject, html }: EmailPayload) {
-  const port = parseInt(process.env.SMTP_PORT || "587", 10);
-  const secure = process.env.SMTP_SECURE === "true" || port === 465;
-  const fromEmail = process.env.SMTP_FROM || process.env.SMTP_USER;
-  const smtpHost = process.env.SMTP_HOST || "smtp.gmail.com";
+  const port = parseInt(process.env.SMTP_PORT?.trim() || "587", 10);
+  const secure = process.env.SMTP_SECURE?.trim().toLowerCase() === "true" || port === 465;
+  const smtpUser = process.env.SMTP_USER?.trim();
+  const smtpPassword = process.env.SMTP_PASS?.replace(/\s+/g, "");
+  const fromEmail = process.env.SMTP_FROM?.trim() || smtpUser;
+  const smtpHost = process.env.SMTP_HOST?.trim() || "smtp.gmail.com";
   let lastError: unknown;
 
   for (let attempt = 1; attempt <= 3; attempt += 1) {
@@ -64,8 +66,8 @@ async function sendEmailViaSmtp({ toEmail, subject, html }: EmailPayload) {
         socketTimeout: 20_000,
         tls: { servername: smtpHost },
         auth: {
-          user: process.env.SMTP_USER,
-          pass: process.env.SMTP_PASS,
+          user: smtpUser,
+          pass: smtpPassword,
         },
       });
 
