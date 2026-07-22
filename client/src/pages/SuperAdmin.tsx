@@ -74,6 +74,7 @@ type ManagedBusiness = {
   active: boolean;
   contactEmail: string | null;
   phone: string | null;
+  logoUrl: string | null;
   createdAt: string;
   accountCount: number;
   administrator: PlatformAccount | null;
@@ -122,6 +123,7 @@ const EMPTY_TENANT_FORM = {
   currency: "AED",
   contactEmail: "",
   phone: "",
+  logoUrl: "",
   adminName: "",
   adminUsername: "",
   adminPassword: "",
@@ -134,6 +136,7 @@ const EMPTY_EDIT_FORM = {
   currency: "AED",
   contactEmail: "",
   phone: "",
+  logoUrl: "",
   adminName: "",
   adminUsername: "",
   adminPassword: "",
@@ -527,6 +530,7 @@ export default function SuperAdmin() {
       currency: business.currency || "AED",
       contactEmail: business.contactEmail || "",
       phone: business.phone || "",
+      logoUrl: business.logoUrl || "",
       adminName: business.administrator?.name || "",
       adminUsername: business.administrator?.username || "",
       adminPassword: "",
@@ -1081,6 +1085,7 @@ function CreateTenantDialog({ open, onOpenChange, form, updateForm, setSlugTouch
           <div className="space-y-2"><Label>Currency</Label><Select value={form.currency} onValueChange={(value) => updateForm("currency", value)}><SelectTrigger className="h-11"><SelectValue /></SelectTrigger><SelectContent>{CURRENCIES.map((value) => <SelectItem key={value} value={value}>{value}</SelectItem>)}</SelectContent></Select></div>
           <div className="space-y-2"><Label htmlFor="tenant-email">Contact email</Label><Input id="tenant-email" className="h-11" type="email" value={form.contactEmail} onChange={(event) => updateForm("contactEmail", event.target.value)} placeholder="office@example.com" /></div>
           <div className="space-y-2"><Label htmlFor="tenant-phone">Phone</Label><Input id="tenant-phone" className="h-11" type="tel" value={form.phone} onChange={(event) => updateForm("phone", event.target.value)} placeholder="+971 ..." /></div>
+          <div className="space-y-2 sm:col-span-2"><Label htmlFor="tenant-logo">Logo URL</Label><Input id="tenant-logo" className="h-11" type="url" value={form.logoUrl} onChange={(event) => updateForm("logoUrl", event.target.value)} placeholder="https://example.com/logo.png" /><p className="text-xs text-muted-foreground">Use a public HTTPS image URL. This logo is shown only inside this tenant.</p></div>
           <div className="border-t pt-5 sm:col-span-2"><h3 className="font-semibold">Initial business administrator</h3><p className="text-xs text-muted-foreground">The account is restricted to this tenant.</p></div>
           <div className="space-y-2"><Label htmlFor="tenant-admin-name">Administrator name</Label><Input id="tenant-admin-name" className="h-11" value={form.adminName} onChange={(event) => updateForm("adminName", event.target.value)} placeholder="Manager name" /></div>
           <div className="space-y-2"><Label htmlFor="tenant-admin-username">Login username</Label><Input id="tenant-admin-username" className="h-11" value={form.adminUsername} onChange={(event) => updateForm("adminUsername", event.target.value)} placeholder="tenant.admin" autoComplete="off" /></div>
@@ -1138,6 +1143,7 @@ function ManageTenantDialog({
             <div className="space-y-2"><Label>Timezone</Label><Select value={form.timezone} onValueChange={(value) => updateForm("timezone", value)}><SelectTrigger className="h-11"><SelectValue /></SelectTrigger><SelectContent>{TIMEZONES.map((value) => <SelectItem key={value} value={value}>{value}</SelectItem>)}</SelectContent></Select></div>
             <div className="space-y-2"><Label htmlFor="edit-tenant-phone">Phone</Label><Input id="edit-tenant-phone" className="h-11" type="tel" value={form.phone} onChange={(event) => updateForm("phone", event.target.value)} /></div>
             <div className="space-y-2 sm:col-span-2"><Label htmlFor="edit-tenant-email">Contact email</Label><Input id="edit-tenant-email" className="h-11" type="email" value={form.contactEmail} onChange={(event) => updateForm("contactEmail", event.target.value)} /></div>
+            <div className="space-y-2 sm:col-span-2"><Label htmlFor="edit-tenant-logo">Logo URL</Label><Input id="edit-tenant-logo" className="h-11" type="url" value={form.logoUrl} onChange={(event) => updateForm("logoUrl", event.target.value)} placeholder="https://example.com/logo.png" /><p className="text-xs text-muted-foreground">Leave blank to display the tenant name instead of a logo.</p></div>
             <div className="flex flex-col gap-3 rounded-lg border border-destructive/30 bg-destructive/5 p-4 sm:col-span-2 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <p className="font-semibold text-destructive">Delete business</p>

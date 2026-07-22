@@ -4,7 +4,6 @@ import { Button } from "@/components/ui/button";
 import { LayoutDashboard, Package, Users, FileText, List, Phone, TrendingUp, LogOut, Shield, UserCog, Wallet, ClipboardList, HardHat, AlertTriangle, Menu, X, Search, Settings, ChevronDown, Truck } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { startTransition, useState, useEffect, type MouseEvent } from "react";
-import logoImage from "@assets/image_1767220512226.png";
 
 interface UserInfo {
   id: number;
@@ -13,6 +12,7 @@ interface UserInfo {
   name: string;
   businessId?: number | null;
   businessName?: string | null;
+  businessLogoUrl?: string | null;
 }
 
 interface SidebarProps {
@@ -194,13 +194,19 @@ export function Sidebar({ user, onLogout }: SidebarProps) {
         ${isMobile && !isOpen ? '-translate-x-full' : 'translate-x-0'}
         ${isCollapsed && !isMobile ? 'opacity-0 pointer-events-none' : 'opacity-100'}
       `}>
-        <div className="border-b border-border/70 p-3">
-          <img 
-            src={logoImage} 
-            alt="Liquid Washes Laundry" 
-            className="w-full h-auto max-h-16 object-contain"
-            data-testid="img-logo"
-          />
+        <div className="flex min-h-20 items-center justify-center border-b border-border/70 p-3 text-center">
+          {user?.businessLogoUrl ? (
+            <img
+              src={user.businessLogoUrl}
+              alt={`${user.businessName || "Tenant"} logo`}
+              className="max-h-14 max-w-full object-contain"
+              data-testid="img-logo"
+            />
+          ) : (
+            <p className="text-lg font-bold leading-tight text-foreground" data-testid="tenant-brand-name">
+              {user?.businessName || "Laundry CRM"}
+            </p>
+          )}
         </div>
 
         <nav className="flex-1 space-y-4 overflow-y-auto p-3">
@@ -311,9 +317,8 @@ export function Sidebar({ user, onLogout }: SidebarProps) {
         )}
 
         <div className="border-t border-border/70 p-3 text-center text-[10px] text-muted-foreground">
-          <p className="font-medium text-foreground text-xs">Liquide Washes Laundry</p>
-          <p>Al Dhanna City, Al Ruwais · Abu Dhabi</p>
-          <p>© 2024</p>
+          <p className="font-medium text-foreground text-xs">{user?.businessName || "Laundry CRM"}</p>
+          <p>Tenant workspace</p>
         </div>
       </div>
     </>

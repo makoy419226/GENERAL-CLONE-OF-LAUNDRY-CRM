@@ -36,6 +36,7 @@ export interface UserInfo {
   name: string;
   businessId?: number | null;
   businessName?: string | null;
+  businessLogoUrl?: string | null;
 }
 interface LoginProps {
   onLogin: (user: UserInfo) => void;

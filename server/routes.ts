@@ -2467,6 +2467,7 @@ export async function registerRoutes(
           name: user.name,
           businessId: user.businessId || null,
           businessName: business?.name || null,
+          businessLogoUrl: business?.logoUrl || null,
         },
       });
     } else {
@@ -2512,6 +2513,7 @@ export async function registerRoutes(
     currency: z.string().trim().length(3).transform((value) => value.toUpperCase()).default("AED"),
     contactEmail: z.string().trim().email().optional().or(z.literal("")),
     phone: z.string().trim().max(40).optional().or(z.literal("")),
+    logoUrl: z.string().trim().url("Enter a valid logo URL").max(2000).optional().or(z.literal("")),
     adminName: z.string().trim().min(2, "Administrator name is required").max(120),
     adminUsername: z
       .string()
@@ -2530,6 +2532,7 @@ export async function registerRoutes(
     currency: z.string().trim().length(3).transform((value) => value.toUpperCase()),
     contactEmail: z.string().trim().email().optional().or(z.literal("")),
     phone: z.string().trim().max(40).optional().or(z.literal("")),
+    logoUrl: z.string().trim().url("Enter a valid logo URL").max(2000).optional().or(z.literal("")),
     adminName: z.string().trim().min(2).max(120),
     adminUsername: z.string().trim().min(3).max(80).regex(/^[A-Za-z0-9._-]+$/),
     adminPassword: z.string().min(8).max(200).optional().or(z.literal("")),
@@ -2635,6 +2638,7 @@ export async function registerRoutes(
             currency: parsed.data.currency,
             contactEmail: parsed.data.contactEmail || null,
             phone: parsed.data.phone || null,
+            logoUrl: parsed.data.logoUrl || null,
           })
           .returning();
 
@@ -2739,6 +2743,7 @@ export async function registerRoutes(
             currency: parsed.data.currency,
             contactEmail: parsed.data.contactEmail || null,
             phone: parsed.data.phone || null,
+            logoUrl: parsed.data.logoUrl || null,
             updatedAt: new Date(),
           })
           .where(eq(laundryBusinesses.id, businessId))

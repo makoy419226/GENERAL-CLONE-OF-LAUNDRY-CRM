@@ -35,7 +35,6 @@ import {
 } from "@/hooks/use-live-data-streams";
 import { useState, useEffect, useCallback, useRef, createContext, useContext } from "react";
 import { useCompanyContactInfo } from "@/lib/companyContact";
-import logoImage from "@assets/image_1767220512226.png";
 
 const SHOW_THEME_TOGGLE = false; // true shows the dark mode button, false hides it.
 
@@ -200,15 +199,18 @@ function App() {
     location === "/" || location === "/dashboard" || location === "/todays-work";
   const headerBrand = (
     <div className="flex flex-col items-center">
-      <img
-        src={logoImage}
-        alt="Liquide Washes Laundry"
-        className="h-7 object-contain lg:h-10"
-        data-testid="img-header-logo"
-      />
-      <span className="mt-0.5 text-[10px] font-semibold leading-none text-primary lg:text-xs">
-        Liquide Washes
-      </span>
+      {user?.businessLogoUrl ? (
+        <img
+          src={user.businessLogoUrl}
+          alt={`${user.businessName || "Tenant"} logo`}
+          className="h-8 max-w-36 object-contain lg:h-10"
+          data-testid="img-header-logo"
+        />
+      ) : (
+        <span className="text-sm font-bold leading-tight text-primary lg:text-base">
+          {user?.businessName || "Laundry CRM"}
+        </span>
+      )}
     </div>
   );
 

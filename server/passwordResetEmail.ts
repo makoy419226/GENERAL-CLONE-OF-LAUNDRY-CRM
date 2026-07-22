@@ -72,7 +72,7 @@ async function sendEmailViaSmtp({ toEmail, subject, html }: EmailPayload) {
       });
 
       await transporter.sendMail({
-        from: `"Liquid Washes Laundry" <${fromEmail}>`,
+        from: `"Laundry CRM Super Admin" <${fromEmail}>`,
         to: toEmail,
         subject,
         html,
@@ -147,12 +147,12 @@ export async function sendUserPasswordResetEmail(
   return deliverPasswordResetEmail(
     {
       toEmail,
-      subject: "Reset Password Request - Liquid Washes Laundry",
+      subject: "Super Admin Password Reset - Laundry CRM",
       html: `
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
-          <h2 style="color: #2563eb;">Reset Password Request</h2>
+          <h2 style="color: #2563eb;">Laundry CRM Super Admin Password Reset</h2>
           <p>Hello ${userName},</p>
-          <p>You requested to reset your password for the Liquid Washes Laundry Management System login page.</p>
+          <p>You requested to reset the super-admin password for Laundry CRM.</p>
           <p>Your password reset code is:</p>
           <div style="background-color: #f3f4f6; padding: 20px; text-align: center; border-radius: 8px; margin: 20px 0;">
             <h1 style="color: #2563eb; letter-spacing: 8px; margin: 0;">${resetCode}</h1>
@@ -160,12 +160,7 @@ export async function sendUserPasswordResetEmail(
           <p>This code will expire in 15 minutes.</p>
           <p>If you did not request this reset, please ignore this email.</p>
           <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 20px 0;">
-          <p style="color: #6b7280; font-size: 12px;">
-            Liquid Washes Laundry<br>
-            Centra Market D/109, Al Dhanna City<br>
-            Al Ruwais, Abu Dhabi - UAE<br>
-            +971 50 123 4567
-          </p>
+          <p style="color: #6b7280; font-size: 12px;">Laundry CRM · Super-admin security notification</p>
         </div>
       `,
     },
@@ -177,11 +172,11 @@ export async function sendAdminPasswordOtpEmail(toEmail: string, otp: string) {
   return deliverPasswordResetEmail(
     {
       toEmail,
-      subject: "Change Password Request - Admin Settings - Liquid Washes Laundry",
+      subject: "Super Admin Password Change - Laundry CRM",
       html: `
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-          <h2 style="color: #3b82f6;">Change Password Request</h2>
-          <p>You requested to change the admin password from Admin Settings.</p>
+          <h2 style="color: #3b82f6;">Laundry CRM Super Admin Password Change</h2>
+          <p>You requested to change the Laundry CRM super-admin password.</p>
           <p>Your OTP code for changing the admin password is:</p>
           <div style="background: #f0f9ff; padding: 20px; text-align: center; margin: 20px 0; border-radius: 8px;">
             <span style="font-size: 32px; font-weight: bold; letter-spacing: 8px; color: #1e40af;">${otp}</span>
