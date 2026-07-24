@@ -7,6 +7,7 @@ import {
   CircleOff,
   Eye,
   EyeOff,
+  ImageIcon,
   Loader2,
   Pencil,
   Plus,
@@ -15,6 +16,7 @@ import {
   ShieldAlert,
   ShieldCheck,
   Trash2,
+  Upload,
   UserPlus,
   Users,
 } from "lucide-react";
@@ -215,6 +217,64 @@ function PasswordField({
         </Button>
       </div>
       {helper && <p className="text-xs text-muted-foreground">{helper}</p>}
+    </div>
+  );
+}
+
+function TenantLogoUpload({
+  id,
+  value,
+  businessName,
+  onChange,
+}: {
+  id: string;
+  value: string;
+  businessName: string;
+  onChange: (value: string) => void;
+}) {
+  const [error, setError] = useState("");
+
+  const handleFile = (file?: File) => {
+    setError("");
+    if (!file) return;
+    if (!["image/png", "image/jpeg", "image/webp"].includes(file.type)) {
+      setError("Choose a PNG, JPEG, or WebP image.");
+      return;
+    }
+    if (file.size > 1_000_000) {
+      setError("Logo must be smaller than 1 MB.");
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => onChange(String(reader.result || ""));
+    reader.onerror = () => setError("The logo could not be read. Please choose another image.");
+    reader.readAsDataURL(file);
+  };
+
+  return (
+    <div className="space-y-2 sm:col-span-2">
+      <Label htmlFor={id}>Tenant logo</Label>
+      <div className="flex flex-col gap-4 rounded-xl border bg-muted/20 p-4 sm:flex-row sm:items-center">
+        <div className="flex h-24 w-24 shrink-0 items-center justify-center overflow-hidden rounded-xl border bg-background">
+          {value ? (
+            <img src={value} alt={`${businessName || "Tenant"} logo preview`} className="h-full w-full object-contain p-2" />
+          ) : (
+            <ImageIcon className="h-8 w-8 text-muted-foreground" aria-hidden="true" />
+          )}
+        </div>
+        <div className="min-w-0 flex-1 space-y-3">
+          <p className="text-sm text-muted-foreground">Upload a PNG, JPEG, or WebP image up to 1 MB. It will appear only in this tenant.</p>
+          <div className="flex flex-wrap gap-2">
+            <Button type="button" variant="outline" className="h-11 gap-2" asChild>
+              <label htmlFor={id} className="cursor-pointer"><Upload className="h-4 w-4" />Choose image</label>
+            </Button>
+            {value && <Button type="button" variant="ghost" className="h-11" onClick={() => onChange("")}>Remove logo</Button>}
+          </div>
+          <Input id={id} type="file" accept="image/png,image/jpeg,image/webp" className="sr-only" onChange={(event) => { handleFile(event.target.files?.[0]); event.target.value = ""; }} />
+          {error && <p className="text-sm text-destructive" role="alert">{error}</p>}
+        </div>
+      </div>
     </div>
   );
 }
@@ -1085,7 +1145,7 @@ function CreateTenantDialog({ open, onOpenChange, form, updateForm, setSlugTouch
           <div className="space-y-2"><Label>Currency</Label><Select value={form.currency} onValueChange={(value) => updateForm("currency", value)}><SelectTrigger className="h-11"><SelectValue /></SelectTrigger><SelectContent>{CURRENCIES.map((value) => <SelectItem key={value} value={value}>{value}</SelectItem>)}</SelectContent></Select></div>
           <div className="space-y-2"><Label htmlFor="tenant-email">Contact email</Label><Input id="tenant-email" className="h-11" type="email" value={form.contactEmail} onChange={(event) => updateForm("contactEmail", event.target.value)} placeholder="office@example.com" /></div>
           <div className="space-y-2"><Label htmlFor="tenant-phone">Phone</Label><Input id="tenant-phone" className="h-11" type="tel" value={form.phone} onChange={(event) => updateForm("phone", event.target.value)} placeholder="+971 ..." /></div>
-          <div className="space-y-2 sm:col-span-2"><Label htmlFor="tenant-logo">Logo URL</Label><Input id="tenant-logo" className="h-11" type="url" value={form.logoUrl} onChange={(event) => updateForm("logoUrl", event.target.value)} placeholder="https://example.com/logo.png" /><p className="text-xs text-muted-foreground">Use a public HTTPS image URL. This logo is shown only inside this tenant.</p></div>
+          <TenantLogoUpload id="tenant-logo" value={form.logoUrl} businessName={form.name} onChange={(value) => updateForm("logoUrl", value)} />
           <div className="border-t pt-5 sm:col-span-2"><h3 className="font-semibold">Initial business administrator</h3><p className="text-xs text-muted-foreground">The account is restricted to this tenant.</p></div>
           <div className="space-y-2"><Label htmlFor="tenant-admin-name">Administrator name</Label><Input id="tenant-admin-name" className="h-11" value={form.adminName} onChange={(event) => updateForm("adminName", event.target.value)} placeholder="Manager name" /></div>
           <div className="space-y-2"><Label htmlFor="tenant-admin-username">Login username</Label><Input id="tenant-admin-username" className="h-11" value={form.adminUsername} onChange={(event) => updateForm("adminUsername", event.target.value)} placeholder="tenant.admin" autoComplete="off" /></div>
@@ -1143,7 +1203,7 @@ function ManageTenantDialog({
             <div className="space-y-2"><Label>Timezone</Label><Select value={form.timezone} onValueChange={(value) => updateForm("timezone", value)}><SelectTrigger className="h-11"><SelectValue /></SelectTrigger><SelectContent>{TIMEZONES.map((value) => <SelectItem key={value} value={value}>{value}</SelectItem>)}</SelectContent></Select></div>
             <div className="space-y-2"><Label htmlFor="edit-tenant-phone">Phone</Label><Input id="edit-tenant-phone" className="h-11" type="tel" value={form.phone} onChange={(event) => updateForm("phone", event.target.value)} /></div>
             <div className="space-y-2 sm:col-span-2"><Label htmlFor="edit-tenant-email">Contact email</Label><Input id="edit-tenant-email" className="h-11" type="email" value={form.contactEmail} onChange={(event) => updateForm("contactEmail", event.target.value)} /></div>
-            <div className="space-y-2 sm:col-span-2"><Label htmlFor="edit-tenant-logo">Logo URL</Label><Input id="edit-tenant-logo" className="h-11" type="url" value={form.logoUrl} onChange={(event) => updateForm("logoUrl", event.target.value)} placeholder="https://example.com/logo.png" /><p className="text-xs text-muted-foreground">Leave blank to display the tenant name instead of a logo.</p></div>
+            <TenantLogoUpload id="edit-tenant-logo" value={form.logoUrl} businessName={form.name} onChange={(value) => updateForm("logoUrl", value)} />
             <div className="flex flex-col gap-3 rounded-lg border border-destructive/30 bg-destructive/5 p-4 sm:col-span-2 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <p className="font-semibold text-destructive">Delete business</p>

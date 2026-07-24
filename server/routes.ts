@@ -2500,6 +2500,17 @@ export async function registerRoutes(
     return identity;
   };
 
+  const tenantLogoSchema = z
+    .string()
+    .max(1_500_000, "Logo must be smaller than 1 MB")
+    .refine(
+      (value) =>
+        value === "" ||
+        /^data:image\/(?:png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(value) ||
+        /^https?:\/\//i.test(value),
+      "Upload a PNG, JPEG, or WebP logo",
+    );
+
   const createBusinessInputSchema = z.object({
     name: z.string().trim().min(2, "Business name is required").max(120),
     slug: z
@@ -2513,7 +2524,7 @@ export async function registerRoutes(
     currency: z.string().trim().length(3).transform((value) => value.toUpperCase()).default("AED"),
     contactEmail: z.string().trim().email().optional().or(z.literal("")),
     phone: z.string().trim().max(40).optional().or(z.literal("")),
-    logoUrl: z.string().trim().url("Enter a valid logo URL").max(2000).optional().or(z.literal("")),
+    logoUrl: tenantLogoSchema.optional().default(""),
     adminName: z.string().trim().min(2, "Administrator name is required").max(120),
     adminUsername: z
       .string()
@@ -2532,7 +2543,7 @@ export async function registerRoutes(
     currency: z.string().trim().length(3).transform((value) => value.toUpperCase()),
     contactEmail: z.string().trim().email().optional().or(z.literal("")),
     phone: z.string().trim().max(40).optional().or(z.literal("")),
-    logoUrl: z.string().trim().url("Enter a valid logo URL").max(2000).optional().or(z.literal("")),
+    logoUrl: tenantLogoSchema.optional().default(""),
     adminName: z.string().trim().min(2).max(120),
     adminUsername: z.string().trim().min(3).max(80).regex(/^[A-Za-z0-9._-]+$/),
     adminPassword: z.string().min(8).max(200).optional().or(z.literal("")),
