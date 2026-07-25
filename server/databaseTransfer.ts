@@ -1,5 +1,5 @@
-import { sql } from "drizzle-orm";
-import { db } from "./db";
+import { eq } from "drizzle-orm";
+import { db, getCurrentDatabaseScope } from "./db";
 import {
   appSecuritySettings,
   bills,
@@ -12,17 +12,15 @@ import {
   missingItems,
   orders,
   packingWorkers,
-  passwordResetTokens,
   productCategorySettings,
   products,
   reviews,
   salesReportScheduleSettings,
   staffMembers,
   stageChecklists,
-  users,
 } from "@shared/schema";
 
-export const DATABASE_EXPORT_FORMAT = "lwl-database-export-v1";
+export const DATABASE_EXPORT_FORMAT = "lwl-tenant-database-export-v2";
 
 type DatabaseRow = Record<string, unknown>;
 
@@ -100,12 +98,6 @@ const databaseTables: readonly DatabaseTableConfig[] = [
       "clientType",
       "brokerAddresses",
     ],
-  },
-  {
-    name: "users",
-    sqlName: "users",
-    table: users,
-    columns: ["id", "username", "password", "pin", "role", "name", "email", "active"],
   },
   {
     name: "packing_workers",
@@ -323,13 +315,6 @@ const databaseTables: readonly DatabaseTableConfig[] = [
     dateColumns: ["date"],
   },
   {
-    name: "password_reset_tokens",
-    sqlName: "password_reset_tokens",
-    table: passwordResetTokens,
-    columns: ["id", "userId", "token", "expiresAt", "used"],
-    dateColumns: ["expiresAt"],
-  },
-  {
     name: "incidents",
     sqlName: "incidents",
     table: incidents,
@@ -428,6 +413,9 @@ export type DatabaseExportPayload = {
     exportedAt: string;
     tableCounts: Record<string, number>;
     tableOrder: string[];
+    tenant: {
+      businessId: number;
+    };
   };
   tables: Record<string, unknown[]>;
 };
@@ -439,16 +427,12 @@ export type DatabaseImportResult = {
   totalRows: number;
 };
 
-function quoteIdent(identifier: string): string {
-  return `"${identifier.replace(/"/g, '""')}"`;
-}
-
-function quoteStringLiteral(value: string): string {
-  return `'${value.replace(/'/g, "''")}'`;
-}
-
-function getRowsPerBatch(columnCount: number): number {
-  return Math.max(1, Math.min(250, Math.floor(5000 / Math.max(1, columnCount))));
+function requireTenantBusinessId(): number {
+  const scope = getCurrentDatabaseScope();
+  if (!scope || !("businessId" in scope)) {
+    throw new Error("Tenant database scope is required for import and export");
+  }
+  return scope.businessId;
 }
 
 function normalizeDateValue(tableName: string, columnName: string, value: unknown): unknown {
@@ -538,28 +522,21 @@ function normalizeImportPayload(payload: unknown): Map<string, DatabaseRow[]> {
   return normalizedTables;
 }
 
-async function resetSerialSequence(tx: any, tableName: string) {
-  const quotedTableName = quoteIdent(tableName);
-  await tx.execute(sql.raw(`
-    SELECT setval(
-      pg_get_serial_sequence(${quoteStringLiteral(tableName)}, 'id'),
-      GREATEST(COALESCE((SELECT MAX(id) FROM ${quotedTableName}), 1), 1),
-      (SELECT COUNT(*) > 0 FROM ${quotedTableName})
-    )
-  `));
-}
-
 export function getDatabaseExportFileName(exportedAt: Date): string {
   const fileTimestamp = exportedAt.toISOString().replace(/[:.]/g, "-");
   return `lwl-database-export-${fileTimestamp}.json`;
 }
 
 export async function buildDatabaseExport(): Promise<DatabaseExportPayload> {
+  const businessId = requireTenantBusinessId();
   const exportedAt = new Date();
   const tableData: Record<string, unknown[]> = {};
 
   for (const tableConfig of databaseTables) {
-    tableData[tableConfig.name] = await db.select().from(tableConfig.table);
+    tableData[tableConfig.name] = await db
+      .select()
+      .from(tableConfig.table)
+      .where(eq(tableConfig.table.businessId, businessId));
   }
 
   const tableCounts = Object.fromEntries(
@@ -572,12 +549,22 @@ export async function buildDatabaseExport(): Promise<DatabaseExportPayload> {
       exportedAt: exportedAt.toISOString(),
       tableCounts,
       tableOrder: databaseTables.map((table) => table.name),
+      tenant: { businessId },
     },
     tables: tableData,
   };
 }
 
 export async function importDatabaseExport(payload: unknown): Promise<DatabaseImportResult> {
+  const businessId = requireTenantBusinessId();
+  const payloadMetadata =
+    payload && typeof payload === "object" && !Array.isArray(payload)
+      ? (payload as Partial<DatabaseExportPayload>).metadata
+      : undefined;
+  if (payloadMetadata?.tenant?.businessId !== businessId) {
+    throw new Error("This backup belongs to a different tenant and cannot be imported here");
+  }
+
   const normalizedTables = normalizeImportPayload(payload);
   const sourceExportedAt =
     payload && typeof payload === "object" && !Array.isArray(payload)
@@ -585,24 +572,63 @@ export async function importDatabaseExport(payload: unknown): Promise<DatabaseIm
       : null;
 
   await db.transaction(async (tx) => {
-    const quotedTableNames = databaseTables
-      .map((tableConfig) => quoteIdent(tableConfig.sqlName))
-      .join(", ");
-
-    await tx.execute(sql.raw(`TRUNCATE TABLE ${quotedTableNames} RESTART IDENTITY CASCADE`));
-
-    for (const tableConfig of databaseTables) {
-      const rows = normalizedTables.get(tableConfig.name) || [];
-      const rowsPerBatch = getRowsPerBatch(tableConfig.columns.length);
-
-      for (let start = 0; start < rows.length; start += rowsPerBatch) {
-        const batch = rows.slice(start, start + rowsPerBatch);
-        await tx.insert(tableConfig.table).values(batch as any[]);
-      }
+    // RLS limits every delete to the active tenant. Reverse order removes
+    // dependent rows before their parents and never touches login accounts.
+    for (const tableConfig of [...databaseTables].reverse()) {
+      await tx
+        .delete(tableConfig.table)
+        .where(eq(tableConfig.table.businessId, businessId));
     }
 
+    const idMaps = new Map<string, Map<number, number>>();
+    const remap = (tableName: string, value: unknown): unknown => {
+      if (value == null) return value;
+      return idMaps.get(tableName)?.get(Number(value)) ?? null;
+    };
+    const foreignKeys: Record<string, Record<string, string>> = {
+      bills: { clientId: "clients", createdByWorkerId: "packing_workers" },
+      orders: {
+        clientId: "clients",
+        billId: "bills",
+        entryByWorkerId: "staff_members",
+        tagWorkerId: "staff_members",
+        packingWorkerId: "packing_workers",
+        deliveredByWorkerId: "staff_members",
+        verifiedByWorkerId: "staff_members",
+      },
+      bill_payments: { billId: "bills", clientId: "clients" },
+      client_transactions: { clientId: "clients", billId: "bills" },
+      incidents: { orderId: "orders", responsibleStaffId: "staff_members" },
+      missing_items: {
+        orderId: "orders",
+        responsibleWorkerId: "staff_members",
+        reportedByWorkerId: "staff_members",
+      },
+      stage_checklists: { orderId: "orders", workerId: "staff_members" },
+      reviews: { orderId: "orders", clientId: "clients" },
+    };
+
     for (const tableConfig of databaseTables) {
-      await resetSerialSequence(tx, tableConfig.sqlName);
+      const tableIdMap = new Map<number, number>();
+      idMaps.set(tableConfig.name, tableIdMap);
+      for (const sourceRow of normalizedTables.get(tableConfig.name) || []) {
+        const oldId = Number(sourceRow.id);
+        const insertRow: DatabaseRow = { ...sourceRow };
+        delete insertRow.id;
+        insertRow.businessId = businessId;
+        for (const [column, targetTable] of Object.entries(
+          foreignKeys[tableConfig.name] || {},
+        )) {
+          if (column in insertRow) {
+            insertRow[column] = remap(targetTable, insertRow[column]);
+          }
+        }
+        const [created] = await tx
+          .insert(tableConfig.table)
+          .values(insertRow as any)
+          .returning({ id: tableConfig.table.id });
+        tableIdMap.set(oldId, Number(created.id));
+      }
     }
   });
 

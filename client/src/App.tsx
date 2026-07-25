@@ -198,19 +198,21 @@ function App() {
   const isDashboardTab =
     location === "/" || location === "/dashboard" || location === "/todays-work";
   const headerBrand = (
-    <div className="flex flex-col items-center">
-      {user?.businessLogoUrl ? (
+    <div className="flex min-w-0 flex-col items-center gap-0.5">
+      {user?.businessLogoUrl && (
         <img
           src={user.businessLogoUrl}
           alt={`${user.businessName || "Tenant"} logo`}
-          className="h-8 max-w-36 object-contain lg:h-10"
+          className="h-7 max-w-32 object-contain lg:h-8"
           data-testid="img-header-logo"
         />
-      ) : (
-        <span className="text-sm font-bold leading-tight text-primary lg:text-base">
-          {user?.businessName || "Laundry CRM"}
-        </span>
       )}
+      <span
+        className="max-w-48 truncate text-xs font-bold leading-tight text-primary lg:text-sm"
+        data-testid="tenant-header-brand-name"
+      >
+        {user?.businessName || "Laundry CRM"}
+      </span>
     </div>
   );
 

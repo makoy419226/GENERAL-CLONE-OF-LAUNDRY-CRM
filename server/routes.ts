@@ -667,8 +667,18 @@ async function getNextSequentialOrderNumber(): Promise<string> {
   return `ORD-${String(cachedOrderSequence).padStart(6, "0")}`;
 }
 
+async function getTenantAdministrator() {
+  const [adminUser] = await db
+    .select()
+    .from(users)
+    .where(and(eq(users.role, "admin"), eq(users.active, true)))
+    .orderBy(users.id)
+    .limit(1);
+  return adminUser || null;
+}
+
 async function getAdminPasswordForVerification(): Promise<string> {
-  const adminUser = await storage.getUserByUsername("admin");
+  const adminUser = await getTenantAdministrator();
   return adminUser?.password || process.env.ADMIN_PASSWORD || "";
 }
 
@@ -696,7 +706,7 @@ const salesReportScheduleInputSchema = z.object({
 });
 
 async function getAdminPinForVerification(): Promise<string> {
-  const adminUser = await storage.getUserByUsername("admin");
+  const adminUser = await getTenantAdministrator();
   return adminUser?.pin || process.env.ADMIN_PIN || "00000";
 }
 
@@ -756,7 +766,7 @@ async function resolveOrderEditPinAccess(
     return null;
   }
 
-  const adminUser = await storage.getUserByUsername("admin");
+  const adminUser = await getTenantAdministrator();
   const adminPin = adminUser?.pin || process.env.ADMIN_PIN || "00000";
   if (adminPin && normalizedPin === adminPin) {
     return {
@@ -832,7 +842,7 @@ async function resolveBulkOrderStageActorByPin(
     return null;
   }
 
-  const adminUser = await storage.getUserByUsername("admin");
+  const adminUser = await getTenantAdministrator();
   const adminPin = adminUser?.pin || process.env.ADMIN_PIN || "00000";
   if (adminPin && normalizedPin === String(adminPin)) {
     return {
@@ -862,7 +872,7 @@ async function resolveDeliveryActorByPin(
     return null;
   }
 
-  const adminUser = await storage.getUserByUsername("admin");
+  const adminUser = await getTenantAdministrator();
   const adminPin = adminUser?.pin || process.env.ADMIN_PIN || "";
   if (adminPin && normalizedPin === adminPin) {
     return {
@@ -1314,7 +1324,7 @@ export async function registerRoutes(
       return null;
     }
 
-    const adminUser = await storage.getUserByUsername("admin");
+    const adminUser = await getTenantAdministrator();
     const adminPin = adminUser?.pin || process.env.ADMIN_PIN || "";
     if (adminPin && normalizedPin === adminPin) {
       return adminUser?.name || adminUser?.username || "Admin";
@@ -2098,7 +2108,7 @@ export async function registerRoutes(
     }
 
     try {
-      const adminUser = await storage.getUserByUsername("admin");
+      const adminUser = await getTenantAdministrator();
       const status = await setAppLockdownStatus(
         !!enabled,
         adminUser?.name || adminUser?.username || "Admin",
@@ -2297,7 +2307,7 @@ export async function registerRoutes(
     }
 
     // Verify admin password from database
-    const adminUser = await storage.getUserByUsername("admin");
+    const adminUser = await getTenantAdministrator();
     const correctPassword = adminUser?.password || process.env.ADMIN_PASSWORD || "";
 
     if (adminPassword !== correctPassword) {
@@ -2344,7 +2354,7 @@ export async function registerRoutes(
     }
 
     // Verify admin password from database
-    const adminUser = await storage.getUserByUsername("admin");
+    const adminUser = await getTenantAdministrator();
     const correctPassword = adminUser?.password || process.env.ADMIN_PASSWORD || "";
 
     if (adminPassword !== correctPassword) {
@@ -2500,6 +2510,19 @@ export async function registerRoutes(
     return identity;
   };
 
+  const requireTenantAdmin = (_req: Request, res: ExpressResponse) => {
+    const identity = res.locals.requestIdentity as TenantRequestContext | undefined;
+    if (!identity) {
+      res.status(401).json({ message: "Authentication required" });
+      return null;
+    }
+    if (identity.role !== "admin" || identity.businessId === null) {
+      res.status(403).json({ message: "Business administrator access is required" });
+      return null;
+    }
+    return identity;
+  };
+
   const tenantLogoSchema = z
     .string()
     .max(1_500_000, "Logo must be smaller than 1 MB")
@@ -2524,6 +2547,10 @@ export async function registerRoutes(
     currency: z.string().trim().length(3).transform((value) => value.toUpperCase()).default("AED"),
     contactEmail: z.string().trim().email().optional().or(z.literal("")),
     phone: z.string().trim().max(40).optional().or(z.literal("")),
+    telephone: z.string().trim().max(40).optional().or(z.literal("")),
+    mobilePhone: z.string().trim().max(40).optional().or(z.literal("")),
+    website: z.string().trim().max(200).optional().or(z.literal("")),
+    address: z.string().trim().max(500).optional().or(z.literal("")),
     logoUrl: tenantLogoSchema.optional().default(""),
     adminName: z.string().trim().min(2, "Administrator name is required").max(120),
     adminUsername: z
@@ -2543,6 +2570,10 @@ export async function registerRoutes(
     currency: z.string().trim().length(3).transform((value) => value.toUpperCase()),
     contactEmail: z.string().trim().email().optional().or(z.literal("")),
     phone: z.string().trim().max(40).optional().or(z.literal("")),
+    telephone: z.string().trim().max(40).optional().or(z.literal("")),
+    mobilePhone: z.string().trim().max(40).optional().or(z.literal("")),
+    website: z.string().trim().max(200).optional().or(z.literal("")),
+    address: z.string().trim().max(500).optional().or(z.literal("")),
     logoUrl: tenantLogoSchema.optional().default(""),
     adminName: z.string().trim().min(2).max(120),
     adminUsername: z.string().trim().min(3).max(80).regex(/^[A-Za-z0-9._-]+$/),
@@ -2570,6 +2601,19 @@ export async function registerRoutes(
     .omit({ password: true })
     .extend({ password: z.string().min(8).max(200).optional().or(z.literal("")) });
 
+  const generateUniqueTenantAdminPin = async (): Promise<string> => {
+    for (let attempt = 0; attempt < 100; attempt += 1) {
+      const pin = String(Math.floor(10000 + Math.random() * 90000));
+      const [existing] = await db
+        .select({ id: users.id })
+        .from(users)
+        .where(and(eq(users.role, "admin"), eq(users.pin, pin)))
+        .limit(1);
+      if (!existing) return pin;
+    }
+    throw new Error("Unable to allocate a unique administrator PIN");
+  };
+
   const serializeManagedBusiness = (
     business: typeof laundryBusinesses.$inferSelect,
   ) => ({
@@ -2582,6 +2626,10 @@ export async function registerRoutes(
     active: business.active,
     contactEmail: business.contactEmail,
     phone: business.phone,
+    telephone: business.telephone,
+    mobilePhone: business.mobilePhone,
+    website: business.website,
+    address: business.address,
     logoUrl: business.logoUrl,
     createdAt: business.createdAt,
     updatedAt: business.updatedAt,
@@ -2638,6 +2686,7 @@ export async function registerRoutes(
     }
 
     try {
+      const administratorPin = await generateUniqueTenantAdminPin();
       const created = await db.transaction(async (tx) => {
         const [business] = await tx
           .insert(laundryBusinesses)
@@ -2649,6 +2698,10 @@ export async function registerRoutes(
             currency: parsed.data.currency,
             contactEmail: parsed.data.contactEmail || null,
             phone: parsed.data.phone || null,
+            telephone: parsed.data.telephone || null,
+            mobilePhone: parsed.data.mobilePhone || null,
+            website: parsed.data.website || null,
+            address: parsed.data.address || null,
             logoUrl: parsed.data.logoUrl || null,
           })
           .returning();
@@ -2661,7 +2714,7 @@ export async function registerRoutes(
             role: "admin",
             name: parsed.data.adminName,
             email: parsed.data.contactEmail || null,
-            pin: "00000",
+            pin: administratorPin,
             active: true,
             businessId: business.id,
           })
@@ -2682,6 +2735,7 @@ export async function registerRoutes(
         message: `${created.business.name} and its administrator account were created`,
         business: created.business,
         administrator: created.administrator,
+        administratorPin,
       });
     } catch (error) {
       const message = formatErrorMessage(error);
@@ -2754,6 +2808,10 @@ export async function registerRoutes(
             currency: parsed.data.currency,
             contactEmail: parsed.data.contactEmail || null,
             phone: parsed.data.phone || null,
+            telephone: parsed.data.telephone || null,
+            mobilePhone: parsed.data.mobilePhone || null,
+            website: parsed.data.website || null,
+            address: parsed.data.address || null,
             logoUrl: parsed.data.logoUrl || null,
             updatedAt: new Date(),
           })
@@ -2841,6 +2899,10 @@ export async function registerRoutes(
         return res.status(404).json({ message: "Tenant not found" });
       }
 
+      const accountPin =
+        parsed.data.role === "admin"
+          ? await generateUniqueTenantAdminPin()
+          : null;
       const [account] = await db
         .insert(users)
         .values({
@@ -2849,7 +2911,7 @@ export async function registerRoutes(
           email: parsed.data.email || null,
           role: parsed.data.role,
           password: parsed.data.password,
-          pin: "00000",
+          pin: accountPin,
           active: parsed.data.active,
           businessId,
         })
@@ -2866,6 +2928,7 @@ export async function registerRoutes(
       res.status(201).json({
         message: `${account.name || account.username} was added to ${business.name}`,
         account,
+        administratorPin: accountPin,
       });
     } catch (error) {
       const message = formatErrorMessage(error);
@@ -3547,6 +3610,10 @@ export async function registerRoutes(
 
   // Create user
   app.post("/api/users", async (req, res) => {
+    const identity = res.locals.requestIdentity as TenantRequestContext | undefined;
+    if (!identity || identity.role !== "admin" || identity.businessId === null) {
+      return res.status(403).json({ message: "Business administrator access is required" });
+    }
     const { username, password, role, name, email, pin } = req.body;
     try {
       const normalizedUsername = String(username || "").trim();
@@ -3621,6 +3688,7 @@ export async function registerRoutes(
           email: normalizedEmail || null,
           pin: normalizedPin || null,
           active: true,
+          businessId: identity.businessId,
         })
         .returning();
       res
@@ -4374,7 +4442,7 @@ export async function registerRoutes(
         return res.status(400).json({ message: "Admin password required" });
       }
 
-      const adminUser = await storage.getUserByUsername("admin");
+      const adminUser = await getTenantAdministrator();
       if (!adminUser || adminUser.password !== adminPassword) {
         return res.status(403).json({ message: "Invalid admin password" });
       }
@@ -4410,7 +4478,7 @@ export async function registerRoutes(
     }
 
     // Verify admin password
-    const adminUser = await storage.getUserByUsername("admin");
+    const adminUser = await getTenantAdministrator();
     if (!adminUser || adminUser.password !== password) {
       return res.status(403).json({ message: "Invalid admin password" });
     }
@@ -7229,6 +7297,7 @@ export async function registerRoutes(
 
   // Transaction routes
   app.get("/api/reports/sales-period", async (req, res) => {
+    if (!requireTenantAdmin(req, res)) return;
     try {
       const period =
         typeof req.query.period === "string" &&
@@ -7270,6 +7339,9 @@ export async function registerRoutes(
   });
 
   app.get("/api/reports/credit-transactions", async (_req, res) => {
+    const identity = requireTenantAdmin(_req, res);
+    if (!identity) return;
+    const businessId = identity.businessId as number;
     try {
       const extractOrderNumbers = (value?: string | null) =>
         Array.from(
@@ -7302,23 +7374,26 @@ export async function registerRoutes(
         .leftJoin(clients, eq(clientTransactions.clientId, clients.id))
         .leftJoin(bills, eq(clientTransactions.billId, bills.id))
         .where(
-          or(
-            eq(clientTransactions.type, "deposit"),
-            eq(clientTransactions.type, "deposit_deduction"),
-            eq(clientTransactions.type, "deposit_used"),
-            eq(clientTransactions.type, "bulk_deposit_used"),
-            and(
-              or(
-                eq(clientTransactions.type, "payment"),
-                eq(clientTransactions.type, "bulk_payment"),
-              ),
-              or(
-                eq(clientTransactions.paymentMethod, "deposit"),
-                eq(clientTransactions.paymentMethod, "bulk_deposit"),
-                eq(bills.paymentMethod, "deposit"),
-                eq(bills.paymentMethod, "bulk_deposit"),
-                sql`lower(coalesce(${clientTransactions.description}, '')) like 'deposit used%'`,
-                sql`lower(coalesce(${clientTransactions.description}, '')) like '%-> account credit%'`,
+          and(
+            eq(clientTransactions.businessId, businessId),
+            or(
+              eq(clientTransactions.type, "deposit"),
+              eq(clientTransactions.type, "deposit_deduction"),
+              eq(clientTransactions.type, "deposit_used"),
+              eq(clientTransactions.type, "bulk_deposit_used"),
+              and(
+                or(
+                  eq(clientTransactions.type, "payment"),
+                  eq(clientTransactions.type, "bulk_payment"),
+                ),
+                or(
+                  eq(clientTransactions.paymentMethod, "deposit"),
+                  eq(clientTransactions.paymentMethod, "bulk_deposit"),
+                  eq(bills.paymentMethod, "deposit"),
+                  eq(bills.paymentMethod, "bulk_deposit"),
+                  sql`lower(coalesce(${clientTransactions.description}, '')) like 'deposit used%'`,
+                  sql`lower(coalesce(${clientTransactions.description}, '')) like '%-> account credit%'`,
+                ),
               ),
             ),
           ),
@@ -10513,7 +10588,7 @@ export async function registerRoutes(
   // Get admin email dynamically from database for reports
   async function getAdminReportEmail(): Promise<string> {
     try {
-      const adminUser = await storage.getUserByUsername("admin");
+      const adminUser = await getTenantAdministrator();
       return adminUser?.email || process.env.ADMIN_REPORT_EMAIL || "idusma0010@gmail.com";
     } catch {
       return process.env.ADMIN_REPORT_EMAIL || "idusma0010@gmail.com";
@@ -10595,11 +10670,10 @@ export async function registerRoutes(
 
   // Send daily sales report (admin protected)
   app.post("/api/admin/send-daily-report", async (req, res) => {
-    if (!requireSuperAdmin(req, res)) return;
+    if (!requireTenantAdmin(req, res)) return;
     const { adminPassword, date } = req.body;
-    const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "";
 
-    if (!adminPassword || adminPassword !== ADMIN_PASSWORD) {
+    if (!(await verifyAdminPassword(String(adminPassword || "")))) {
       return res.status(401).json({ success: false, message: "Invalid admin password" });
     }
 
@@ -10625,13 +10699,13 @@ export async function registerRoutes(
 
   // Get admin report email setting (dynamic from database)
   app.get("/api/admin/report-email", async (req, res) => {
-    if (!requireSuperAdmin(req, res)) return;
+    if (!requireTenantAdmin(req, res)) return;
     const email = await getAdminReportEmail();
     res.json({ email });
   });
 
   app.get("/api/admin/report-schedule", async (_req, res) => {
-    if (!requireSuperAdmin(_req, res)) return;
+    if (!requireTenantAdmin(_req, res)) return;
     try {
       const settings = await storage.getSalesReportScheduleSettings();
       res.json(settings);
@@ -10641,7 +10715,7 @@ export async function registerRoutes(
   });
 
   app.put("/api/admin/report-schedule", async (req, res) => {
-    if (!requireSuperAdmin(req, res)) return;
+    if (!requireTenantAdmin(req, res)) return;
     const { adminPassword, ...scheduleInput } = req.body || {};
 
     if (!(await verifyAdminPassword(String(adminPassword || "")))) {
@@ -10730,11 +10804,10 @@ export async function registerRoutes(
 
   // Send periodic sales report (admin protected)
   app.post("/api/admin/send-report", async (req, res) => {
-    if (!requireSuperAdmin(req, res)) return;
+    if (!requireTenantAdmin(req, res)) return;
     const { adminPassword, period } = req.body;
-    const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "";
 
-    if (!adminPassword || adminPassword !== ADMIN_PASSWORD) {
+    if (!(await verifyAdminPassword(String(adminPassword || "")))) {
       return res.status(401).json({ success: false, message: "Invalid admin password" });
     }
 
@@ -10903,7 +10976,7 @@ export async function registerRoutes(
     }
 
     // Check if it's the admin universal PIN (from database)
-    const adminUser = await storage.getUserByUsername("admin");
+    const adminUser = await getTenantAdministrator();
     const adminPin = adminUser?.pin || process.env.ADMIN_PIN || "";
     if (adminPin && pin === adminPin) {
       return res.json({
@@ -10947,7 +11020,7 @@ export async function registerRoutes(
     }
 
     // Check if it's the admin universal PIN (from database)
-    const adminUser = await storage.getUserByUsername("admin");
+    const adminUser = await getTenantAdministrator();
     const adminPin = adminUser?.pin || process.env.ADMIN_PIN || "";
     if (adminPin && pin === adminPin) {
       return res.json({
@@ -11017,7 +11090,7 @@ export async function registerRoutes(
     }
 
     // Check if it's the admin universal PIN (from database)
-    const adminUser = await storage.getUserByUsername("admin");
+    const adminUser = await getTenantAdministrator();
     const adminPin = adminUser?.pin || process.env.ADMIN_PIN || "";
     if (adminPin && pin === adminPin) {
       return res.json({
@@ -12589,7 +12662,7 @@ export async function registerRoutes(
       if (!adminPassword || !orderNumbersToMove || !beforeOrderNumber) {
         return res.status(400).json({ message: "Missing required fields" });
       }
-      const adminUser = await storage.getUserByUsername("admin");
+      const adminUser = await getTenantAdministrator();
       if (!adminUser) return res.status(401).json({ message: "Admin user not found" });
       const bcryptMod = await import("bcryptjs");
       const valid = await bcryptMod.default.compare(adminPassword, adminUser.password);

@@ -2,6 +2,7 @@ import { db, getCurrentDatabaseScope } from "./db";
 import bcrypt from "bcryptjs";
 import {
   products,
+  laundryBusinesses,
   clients,
   bills,
   billPayments,
@@ -1112,6 +1113,10 @@ export class DatabaseStorage implements IStorage {
     from,
     to,
   }: SalesReportPeriodInput): Promise<SalesReportPeriodData> {
+    const businessId = currentTenantBusinessId();
+    if (!businessId) {
+      throw new Error("Tenant scope is required to generate a sales report");
+    }
     const fromDate = new Date(from);
     const toDate = new Date(to);
 
@@ -1126,13 +1131,21 @@ export class DatabaseStorage implements IStorage {
     const currentPeriodOrders = await db
       .select()
       .from(orders)
-      .where(and(gte(orders.entryDate, fromDate), lte(orders.entryDate, toDate)))
+      .where(and(
+        eq(orders.businessId, businessId),
+        gte(orders.entryDate, fromDate),
+        lte(orders.entryDate, toDate),
+      ))
       .orderBy(desc(orders.entryDate), desc(orders.id));
 
     const currentPeriodPayments = await db
       .select()
       .from(billPayments)
-      .where(and(gte(billPayments.paymentDate, fromDate), lte(billPayments.paymentDate, toDate)))
+      .where(and(
+        eq(billPayments.businessId, businessId),
+        gte(billPayments.paymentDate, fromDate),
+        lte(billPayments.paymentDate, toDate),
+      ))
       .orderBy(desc(billPayments.paymentDate), desc(billPayments.id));
 
     const relatedBillIds = Array.from(
@@ -1150,9 +1163,12 @@ export class DatabaseStorage implements IStorage {
             .select()
             .from(orders)
             .where(
-              or(
-                and(gte(orders.entryDate, fromDate), lte(orders.entryDate, toDate)),
-                inArray(orders.billId, relatedBillIds),
+              and(
+                eq(orders.businessId, businessId),
+                or(
+                  and(gte(orders.entryDate, fromDate), lte(orders.entryDate, toDate)),
+                  inArray(orders.billId, relatedBillIds),
+                ),
               ),
             )
             .orderBy(desc(orders.entryDate), desc(orders.id))
@@ -1173,7 +1189,10 @@ export class DatabaseStorage implements IStorage {
             })
             .from(bills)
             .leftJoin(clients, eq(bills.clientId, clients.id))
-            .where(inArray(bills.id, relatedBillIds))
+            .where(and(
+              eq(bills.businessId, businessId),
+              inArray(bills.id, relatedBillIds),
+            ))
             .orderBy(desc(bills.billDate), desc(bills.id))
         : [];
 
@@ -1191,7 +1210,11 @@ export class DatabaseStorage implements IStorage {
         ? await db
             .select()
             .from(billPayments)
-            .where(and(inArray(billPayments.billId, relatedBillIds), lte(billPayments.paymentDate, toDate)))
+            .where(and(
+              eq(billPayments.businessId, businessId),
+              inArray(billPayments.billId, relatedBillIds),
+              lte(billPayments.paymentDate, toDate),
+            ))
             .orderBy(desc(billPayments.paymentDate), desc(billPayments.id))
         : [];
 
@@ -3216,13 +3239,49 @@ export class DatabaseStorage implements IStorage {
     }
 
     const [existing] = await db.select().from(companyContactSettings).orderBy(companyContactSettings.id);
-    if (existing) return existing;
+    const businessId = currentTenantBusinessId();
+    const [business] = businessId
+      ? await db
+          .select()
+          .from(laundryBusinesses)
+          .where(eq(laundryBusinesses.id, businessId))
+          .limit(1)
+      : [];
+    if (existing) {
+      return {
+        ...existing,
+        ...(business
+          ? {
+              companyName: business.name,
+              telephone: business.telephone || existing.telephone,
+              mobilePhone: business.mobilePhone || business.phone || existing.mobilePhone,
+              whatsappPhone:
+                business.mobilePhone || business.phone || existing.whatsappPhone,
+              email: business.contactEmail || existing.email,
+              website: business.website || existing.website,
+              addressLine1: business.address || existing.addressLine1,
+            }
+          : {}),
+      };
+    }
 
     const [created] = await db
       .insert(companyContactSettings)
       .values({})
       .returning();
-    return created;
+    return business
+      ? {
+          ...created,
+          companyName: business.name,
+          telephone: business.telephone || created.telephone,
+          mobilePhone: business.mobilePhone || business.phone || created.mobilePhone,
+          whatsappPhone:
+            business.mobilePhone || business.phone || created.whatsappPhone,
+          email: business.contactEmail || created.email,
+          website: business.website || created.website,
+          addressLine1: business.address || created.addressLine1,
+        }
+      : created;
   }
 
   private async ensureSalesReportScheduleSettingsTable(): Promise<void> {

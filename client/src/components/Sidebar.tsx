@@ -194,19 +194,21 @@ export function Sidebar({ user, onLogout }: SidebarProps) {
         ${isMobile && !isOpen ? '-translate-x-full' : 'translate-x-0'}
         ${isCollapsed && !isMobile ? 'opacity-0 pointer-events-none' : 'opacity-100'}
       `}>
-        <div className="flex min-h-20 items-center justify-center border-b border-border/70 p-3 text-center">
-          {user?.businessLogoUrl ? (
+        <div className="flex min-h-20 flex-col items-center justify-center gap-1.5 border-b border-border/70 p-3 text-center">
+          {user?.businessLogoUrl && (
             <img
               src={user.businessLogoUrl}
               alt={`${user.businessName || "Tenant"} logo`}
-              className="max-h-14 max-w-full object-contain"
+              className="max-h-12 max-w-full object-contain"
               data-testid="img-logo"
             />
-          ) : (
-            <p className="text-lg font-bold leading-tight text-foreground" data-testid="tenant-brand-name">
-              {user?.businessName || "Laundry CRM"}
-            </p>
           )}
+          <p
+            className="max-w-full truncate text-base font-bold leading-tight text-foreground"
+            data-testid="tenant-brand-name"
+          >
+            {user?.businessName || "Laundry CRM"}
+          </p>
         </div>
 
         <nav className="flex-1 space-y-4 overflow-y-auto p-3">

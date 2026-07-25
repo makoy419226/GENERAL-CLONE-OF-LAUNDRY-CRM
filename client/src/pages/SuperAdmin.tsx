@@ -77,6 +77,10 @@ type ManagedBusiness = {
   active: boolean;
   contactEmail: string | null;
   phone: string | null;
+  telephone: string | null;
+  mobilePhone: string | null;
+  website: string | null;
+  address: string | null;
   logoUrl: string | null;
   createdAt: string;
   accountCount: number;
@@ -126,6 +130,10 @@ const EMPTY_TENANT_FORM = {
   currency: "AED",
   contactEmail: "",
   phone: "",
+  telephone: "",
+  mobilePhone: "",
+  website: "",
+  address: "",
   logoUrl: "",
   adminName: "",
   adminUsername: "",
@@ -139,6 +147,10 @@ const EMPTY_EDIT_FORM = {
   currency: "AED",
   contactEmail: "",
   phone: "",
+  telephone: "",
+  mobilePhone: "",
+  website: "",
+  address: "",
   logoUrl: "",
   adminName: "",
   adminUsername: "",
@@ -450,7 +462,12 @@ export default function SuperAdmin() {
       setTenantForm(EMPTY_TENANT_FORM);
       setSlugTouched(false);
       setTenantFormError("");
-      toast({ title: "Tenant created", description: result.message });
+      toast({
+        title: "Tenant created",
+        description: result.administratorPin
+          ? `${result.message}. Administrator PIN: ${result.administratorPin}`
+          : result.message,
+      });
     },
     onError: (mutationError) => {
       setTenantFormError(extractApiErrorMessage(mutationError, "Failed to create the tenant"));
@@ -540,7 +557,12 @@ export default function SuperAdmin() {
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ["/api/super-admin/businesses"] });
       closeAccountDialog();
-      toast({ title: accountToEdit ? "Account updated" : "Account created", description: result.message });
+      toast({
+        title: accountToEdit ? "Account updated" : "Account created",
+        description: result.administratorPin
+          ? `${result.message}. Administrator PIN: ${result.administratorPin}`
+          : result.message,
+      });
     },
     onError: (mutationError) => {
       setAccountError(extractApiErrorMessage(mutationError, "Failed to save the account"));
@@ -631,6 +653,10 @@ export default function SuperAdmin() {
       currency: business.currency || "AED",
       contactEmail: business.contactEmail || "",
       phone: business.phone || "",
+      telephone: business.telephone || "",
+      mobilePhone: business.mobilePhone || business.phone || "",
+      website: business.website || "",
+      address: business.address || "",
       logoUrl: business.logoUrl || "",
       adminName: business.administrator?.name || "",
       adminUsername: business.administrator?.username || "",
@@ -1185,7 +1211,10 @@ function CreateTenantDialog({ open, onOpenChange, form, updateForm, setSlugTouch
           <div className="space-y-2"><Label>Timezone</Label><Select value={form.timezone} onValueChange={(value) => updateForm("timezone", value)}><SelectTrigger className="h-11"><SelectValue /></SelectTrigger><SelectContent>{TIMEZONES.map((value) => <SelectItem key={value} value={value}>{value}</SelectItem>)}</SelectContent></Select></div>
           <div className="space-y-2"><Label>Currency</Label><Select value={form.currency} onValueChange={(value) => updateForm("currency", value)}><SelectTrigger className="h-11"><SelectValue /></SelectTrigger><SelectContent>{CURRENCIES.map((value) => <SelectItem key={value} value={value}>{value}</SelectItem>)}</SelectContent></Select></div>
           <div className="space-y-2"><Label htmlFor="tenant-email">Contact email</Label><Input id="tenant-email" className="h-11" type="email" value={form.contactEmail} onChange={(event) => updateForm("contactEmail", event.target.value)} placeholder="office@example.com" /></div>
-          <div className="space-y-2"><Label htmlFor="tenant-phone">Phone</Label><Input id="tenant-phone" className="h-11" type="tel" value={form.phone} onChange={(event) => updateForm("phone", event.target.value)} placeholder="+971 ..." /></div>
+          <div className="space-y-2"><Label htmlFor="tenant-telephone">Telephone</Label><Input id="tenant-telephone" className="h-11" type="tel" value={form.telephone} onChange={(event) => updateForm("telephone", event.target.value)} placeholder="02 123 4567" /></div>
+          <div className="space-y-2"><Label htmlFor="tenant-mobile">Mobile</Label><Input id="tenant-mobile" className="h-11" type="tel" value={form.mobilePhone} onChange={(event) => updateForm("mobilePhone", event.target.value)} placeholder="+971 50 123 4567" /></div>
+          <div className="space-y-2"><Label htmlFor="tenant-website">Website</Label><Input id="tenant-website" className="h-11" type="url" value={form.website} onChange={(event) => updateForm("website", event.target.value)} placeholder="https://example.com" /></div>
+          <div className="space-y-2 sm:col-span-2"><Label htmlFor="tenant-address">Address</Label><Input id="tenant-address" className="h-11" value={form.address} onChange={(event) => updateForm("address", event.target.value)} placeholder="Street, area, city, country" /></div>
           <TenantLogoUpload id="tenant-logo" value={form.logoUrl} businessName={form.name} onChange={(value) => updateForm("logoUrl", value)} />
           <div className="border-t pt-5 sm:col-span-2"><h3 className="font-semibold">Initial business administrator</h3><p className="text-xs text-muted-foreground">The account is restricted to this tenant.</p></div>
           <div className="space-y-2"><Label htmlFor="tenant-admin-name">Administrator name</Label><Input id="tenant-admin-name" className="h-11" value={form.adminName} onChange={(event) => updateForm("adminName", event.target.value)} placeholder="Manager name" /></div>
@@ -1242,8 +1271,11 @@ function ManageTenantDialog({
             <div className="space-y-2"><Label>Business type</Label><Select value={form.businessType} onValueChange={(value) => updateForm("businessType", value)}><SelectTrigger className="h-11"><SelectValue /></SelectTrigger><SelectContent>{BUSINESS_TYPES.map((item) => <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>)}</SelectContent></Select></div>
             <div className="space-y-2"><Label>Currency</Label><Select value={form.currency} onValueChange={(value) => updateForm("currency", value)}><SelectTrigger className="h-11"><SelectValue /></SelectTrigger><SelectContent>{CURRENCIES.map((value) => <SelectItem key={value} value={value}>{value}</SelectItem>)}</SelectContent></Select></div>
             <div className="space-y-2"><Label>Timezone</Label><Select value={form.timezone} onValueChange={(value) => updateForm("timezone", value)}><SelectTrigger className="h-11"><SelectValue /></SelectTrigger><SelectContent>{TIMEZONES.map((value) => <SelectItem key={value} value={value}>{value}</SelectItem>)}</SelectContent></Select></div>
-            <div className="space-y-2"><Label htmlFor="edit-tenant-phone">Phone</Label><Input id="edit-tenant-phone" className="h-11" type="tel" value={form.phone} onChange={(event) => updateForm("phone", event.target.value)} /></div>
-            <div className="space-y-2 sm:col-span-2"><Label htmlFor="edit-tenant-email">Contact email</Label><Input id="edit-tenant-email" className="h-11" type="email" value={form.contactEmail} onChange={(event) => updateForm("contactEmail", event.target.value)} /></div>
+            <div className="space-y-2"><Label htmlFor="edit-tenant-telephone">Telephone</Label><Input id="edit-tenant-telephone" className="h-11" type="tel" value={form.telephone} onChange={(event) => updateForm("telephone", event.target.value)} /></div>
+            <div className="space-y-2"><Label htmlFor="edit-tenant-mobile">Mobile</Label><Input id="edit-tenant-mobile" className="h-11" type="tel" value={form.mobilePhone} onChange={(event) => updateForm("mobilePhone", event.target.value)} /></div>
+            <div className="space-y-2"><Label htmlFor="edit-tenant-email">Contact email</Label><Input id="edit-tenant-email" className="h-11" type="email" value={form.contactEmail} onChange={(event) => updateForm("contactEmail", event.target.value)} /></div>
+            <div className="space-y-2"><Label htmlFor="edit-tenant-website">Website</Label><Input id="edit-tenant-website" className="h-11" type="url" value={form.website} onChange={(event) => updateForm("website", event.target.value)} /></div>
+            <div className="space-y-2 sm:col-span-2"><Label htmlFor="edit-tenant-address">Address</Label><Input id="edit-tenant-address" className="h-11" value={form.address} onChange={(event) => updateForm("address", event.target.value)} /></div>
             <TenantLogoUpload id="edit-tenant-logo" value={form.logoUrl} businessName={form.name} onChange={(value) => updateForm("logoUrl", value)} />
             <div className="flex flex-col gap-3 rounded-lg border border-destructive/30 bg-destructive/5 p-4 sm:col-span-2 sm:flex-row sm:items-center sm:justify-between">
               <div>

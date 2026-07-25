@@ -21,6 +21,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { getProductCategoryGroupName } from "@shared/productCategories";
+import { useCompanyContactInfo } from "@/lib/companyContact";
 
 interface Order {
   id: number;
@@ -37,6 +38,7 @@ interface Order {
 type InventorySort = "category" | "newest" | "oldest" | "alphabetical";
 
 export default function Dashboard() {
+  const { companyContact } = useCompanyContactInfo();
   const [searchTerm, setSearchTerm] = useState("");
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [showCreatePinDialog, setShowCreatePinDialog] = useState(false);
@@ -200,19 +202,19 @@ export default function Dashboard() {
               >
                 <span className="flex items-center gap-2">
                   <Phone className="w-4 h-4 animate-blink" />
-                  <span className="animate-blink font-bold">Tel: 026 815 824</span>
+                  <span className="animate-blink font-bold">Tel: {companyContact.telephone || "-"}</span>
                 </span>
                 <span className="flex items-center gap-2">
                   <Phone className="w-4 h-4 animate-blink" />
-                  <span className="animate-blink font-bold">Phone: +971 56 338 0001</span>
+                  <span className="animate-blink font-bold">Phone: {companyContact.mobilePhone || "-"}</span>
                 </span>
                 <span className="flex items-center gap-2">
                   <Mail className="w-4 h-4" />
-                  Email: info@lwl.ae
+                  Email: {companyContact.email || "-"}
                 </span>
                 <span className="flex items-center gap-2">
                   <Globe className="w-4 h-4" />
-                  www.lwl.ae
+                  {companyContact.website || "-"}
                 </span>
               </div>
             ))}
