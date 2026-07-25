@@ -1348,7 +1348,7 @@ export default function AdminSettings() {
               </div>
 
               <div className="rounded-lg border border-primary/20 bg-primary/5 p-4 text-sm">
-                <p className="font-semibold text-foreground">Managed by the super administrator</p>
+                <p className="font-semibold text-foreground">Managed from the Console</p>
                 <p className="mt-1 text-muted-foreground">Username, password, and SMTP settings can only be changed from the platform-owner dashboard.</p>
               </div>
 

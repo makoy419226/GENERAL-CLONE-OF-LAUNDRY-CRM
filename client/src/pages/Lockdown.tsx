@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import type { UserInfo } from "@/pages/Login";
-import logoImage from "@assets/image_1767220512226.png";
+import logoImage from "@/assets/images/lwl-logo.png";
 
 export type LockdownStatus = {
   enabled: boolean;

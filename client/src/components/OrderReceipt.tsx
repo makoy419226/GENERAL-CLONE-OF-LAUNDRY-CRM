@@ -18,8 +18,7 @@ import { Printer, X, Edit, DollarSign } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { formatCompanyPhoneLine, getCompanyAddressLines, useCompanyContactInfo } from "@/lib/companyContact";
 import type { Order, Client, Product } from "@shared/schema";
-import logoImage from "@assets/image_1769169126339.png";
-import paidStampImage from "@assets/image_1767486604951.png";
+import logoImage from "@/assets/images/lwl-logo.png";
 
 interface OrderReceiptProps {
   order: Order;
@@ -31,7 +30,6 @@ interface OrderReceiptProps {
 export function OrderReceipt({ order, client, onClose, embedded }: OrderReceiptProps) {
   const receiptRef = useRef<HTMLDivElement>(null);
   const [logoBase64, setLogoBase64] = useState<string>("");
-  const [paidStampBase64, setPaidStampBase64] = useState<string>("");
   const [adjustOpen, setAdjustOpen] = useState(false);
   const [adjustValue, setAdjustValue] = useState("");
   const [adjustReason, setAdjustReason] = useState("");
@@ -110,19 +108,6 @@ export function OrderReceipt({ order, client, onClose, embedded }: OrderReceiptP
     };
     img.src = logoImage;
 
-    const stampImg = new Image();
-    stampImg.crossOrigin = "anonymous";
-    stampImg.onload = () => {
-      const canvas = document.createElement("canvas");
-      canvas.width = stampImg.width;
-      canvas.height = stampImg.height;
-      const ctx = canvas.getContext("2d");
-      if (ctx) {
-        ctx.drawImage(stampImg, 0, 0);
-        setPaidStampBase64(canvas.toDataURL("image/png"));
-      }
-    };
-    stampImg.src = paidStampImage;
   }, []);
 
   const parsedItems = useMemo(() => {
@@ -432,16 +417,26 @@ export function OrderReceipt({ order, client, onClose, embedded }: OrderReceiptP
               marginTop: "15px",
               marginBottom: "10px",
             }}>
-              <img 
-                src={paidStampBase64 || paidStampImage} 
-                alt="PAID" 
+              <div
+                aria-label="PAID"
                 style={{
-                  width: "120px",
-                  height: "120px",
+                  width: "110px",
+                  height: "110px",
                   margin: "0 auto",
-                  display: "block",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  border: "6px double #dc2626",
+                  borderRadius: "9999px",
+                  color: "#dc2626",
+                  fontSize: "25px",
+                  fontWeight: 900,
+                  letterSpacing: "2px",
+                  transform: "rotate(-10deg)",
                 }}
-              />
+              >
+                PAID
+              </div>
               <div style={{
                 fontSize: "14px",
                 fontWeight: "bold",

@@ -9,6 +9,7 @@ import { sendDailySalesReportEmailSMTP, sendSalesReportEmailSMTP, type DailySale
 import { storage } from "./storage";
 import type { SalesReportScheduleSettings } from "@shared/schema";
 import { formatErrorMessage } from "./errorFormatting";
+import { getCurrentDatabaseScope } from "./db";
 
 export const app = express();
 export const httpServer = http.createServer(app);
@@ -481,6 +482,13 @@ export const appReady = (async () => {
   }
 
   async function getReportScheduleSettings(): Promise<SalesReportScheduleSettings> {
+    // The process-wide scheduler has no tenant identity. Schedule rows are
+    // tenant-owned, so use the documented legacy defaults until the scheduler
+    // is invoked from an explicit tenant scope.
+    if (!getCurrentDatabaseScope()) {
+      return DEFAULT_REPORT_SCHEDULE;
+    }
+
     try {
       return await storage.getSalesReportScheduleSettings();
     } catch (err) {

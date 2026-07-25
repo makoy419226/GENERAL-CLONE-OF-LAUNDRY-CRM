@@ -4,7 +4,7 @@ import { Card } from "@/components/ui/card";
 import { InvoiceItemDescription } from "@/components/InvoiceItemDescription";
 import { Printer, X } from "lucide-react";
 import { formatCompanyPhoneLine, getCompanyAddressLines, useCompanyContactInfo } from "@/lib/companyContact";
-import logoImage from "@assets/image_1769169126339.png";
+import logoImage from "@/assets/images/lwl-logo.png";
 
 interface BillInvoiceProps {
   invoiceNumber: string;

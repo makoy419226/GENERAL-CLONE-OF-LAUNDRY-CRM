@@ -412,7 +412,7 @@ export default function StaffHierarchyPanel() {
           <div>
             <p className="font-semibold text-blue-950 dark:text-blue-100">Staff profiles are separate from login accounts</p>
             <p className="mt-1 text-sm leading-6 text-blue-800/80 dark:text-blue-200/80">
-              Manage branches, teams, reporting lines, and activity PINs here. Usernames and passwords are controlled only by the Super Admin.
+              Manage branches, teams, reporting lines, and activity PINs here. Usernames and passwords are controlled only from the Console.
             </p>
           </div>
         </div>
@@ -537,7 +537,7 @@ export default function StaffHierarchyPanel() {
 
       <Dialog open={staffEditor !== null} onOpenChange={(open) => !open && setStaffEditor(null)}>
         <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-xl">
-          <DialogHeader><DialogTitle>{staffEditor === "new" ? "Add staff profile" : "Edit staff profile"}</DialogTitle><DialogDescription>This is an operational profile, not a login account. Login credentials remain in the Super Admin console.</DialogDescription></DialogHeader>
+          <DialogHeader><DialogTitle>{staffEditor === "new" ? "Add staff profile" : "Edit staff profile"}</DialogTitle><DialogDescription>This is an operational profile, not a login account. Login credentials remain in the Console.</DialogDescription></DialogHeader>
           <div className="grid gap-4 py-2">
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2"><Label htmlFor="staff-name">Display name</Label><Input id="staff-name" value={staffForm.displayName} onChange={(event) => setStaffForm((current) => ({ ...current, displayName: event.target.value }))} placeholder="Full name" autoFocus /></div>

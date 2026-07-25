@@ -672,14 +672,6 @@ export default function Workers() {
     return staffMembers?.filter(m => m.roleType === 'driver') || [];
   }, [staffMembers]);
 
-  const extraAdminUsers = useMemo(() => {
-    return (systemUsers || []).filter((user) => {
-      const normalizedRole = String(user.role || "").toLowerCase();
-      const normalizedUsername = String(user.username || "").toLowerCase();
-      return normalizedRole === "admin" && normalizedUsername !== "admin";
-    });
-  }, [systemUsers]);
-
   // Fetch active sessions to show online status
   const { data: activeSessions } = useQuery<{ activeUserIds: number[] }>({
     queryKey: ["/api/auth/active-sessions"],
@@ -5664,57 +5656,6 @@ export default function Workers() {
                     Manage login accounts for staff. Users with email addresses
                     can use the "Forgot Password" feature.
                   </p>
-                  {extraAdminUsers.length > 0 && (
-                    <div className="mb-4 rounded-lg border border-destructive/30 bg-destructive/5 p-4">
-                      <div className="flex items-start justify-between gap-4">
-                        <div>
-                          <p className="font-medium text-destructive">
-                            Unexpected Admin Accounts Found
-                          </p>
-                          <p className="text-sm text-muted-foreground mt-1">
-                            Only the main <span className="font-mono">admin</span> account should exist. You can remove any accidental extra admin accounts below.
-                          </p>
-                        </div>
-                        <Badge variant="destructive">{extraAdminUsers.length}</Badge>
-                      </div>
-                      <div className="mt-4 space-y-2">
-                        {extraAdminUsers.map((user) => (
-                          <div
-                            key={user.id}
-                            className="flex items-center justify-between gap-4 rounded-md border bg-background px-3 py-3"
-                          >
-                            <div className="flex flex-wrap items-center gap-4 text-sm">
-                              <div>
-                                <p className="text-xs text-muted-foreground">Username</p>
-                                <p className="font-medium">{user.username}</p>
-                              </div>
-                              <div>
-                                <p className="text-xs text-muted-foreground">Email</p>
-                                <p>{user.email || "-"}</p>
-                              </div>
-                              <div>
-                                <p className="text-xs text-muted-foreground">Status</p>
-                                <p>{user.active ? "Active" : "Inactive"}</p>
-                              </div>
-                            </div>
-                            <Button
-                              size="sm"
-                              variant="destructive"
-                              onClick={() => {
-                                if (confirm(`Delete extra admin account "${user.username}"?`)) {
-                                  deleteUserMutation.mutate(user.id);
-                                }
-                              }}
-                              data-testid={`button-delete-extra-admin-${user.id}`}
-                            >
-                              <Trash2 className="w-4 h-4 mr-2" />
-                              Delete
-                            </Button>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
                   {isLoadingUsers ? (
                     <div className="flex items-center justify-center h-32">
                       <Loader2 className="w-6 h-6 animate-spin text-primary" />

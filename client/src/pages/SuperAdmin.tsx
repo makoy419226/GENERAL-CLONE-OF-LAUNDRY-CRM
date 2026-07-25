@@ -5,6 +5,7 @@ import {
   Building2,
   CheckCircle2,
   CircleOff,
+  ClipboardPaste,
   Eye,
   EyeOff,
   ImageIcon,
@@ -252,10 +253,46 @@ function TenantLogoUpload({
     reader.readAsDataURL(file);
   };
 
+  const handlePaste = (items: DataTransferItemList) => {
+    const imageItem = Array.from(items).find((item) => item.type.startsWith("image/"));
+    if (!imageItem) {
+      setError("Copy an image first, then paste it here.");
+      return;
+    }
+    handleFile(imageItem.getAsFile() || undefined);
+  };
+
+  const pasteFromClipboard = async () => {
+    setError("");
+    if (!navigator.clipboard?.read) {
+      setError("Use Ctrl+V or Command+V inside this logo box to paste an image.");
+      return;
+    }
+    try {
+      const clipboardItems = await navigator.clipboard.read();
+      const imageType = clipboardItems
+        .flatMap((item) => item.types)
+        .find((type) => type.startsWith("image/"));
+      const source = clipboardItems.find((item) =>
+        imageType ? item.types.includes(imageType) : false,
+      );
+      if (!source || !imageType) {
+        setError("Copy an image first, then choose Paste image.");
+        return;
+      }
+      handleFile(new File([await source.getType(imageType)], "pasted-logo", { type: imageType }));
+    } catch {
+      setError("Clipboard access was blocked. Click this box and press Ctrl+V or Command+V.");
+    }
+  };
+
   return (
     <div className="space-y-2 sm:col-span-2">
       <Label htmlFor={id}>Tenant logo</Label>
-      <div className="flex flex-col gap-4 rounded-xl border bg-muted/20 p-4 sm:flex-row sm:items-center">
+      <div
+        className="flex flex-col gap-4 rounded-xl border bg-muted/20 p-4 focus-within:ring-2 focus-within:ring-ring sm:flex-row sm:items-center"
+        onPaste={(event) => handlePaste(event.clipboardData.items)}
+      >
         <div className="flex h-24 w-24 shrink-0 items-center justify-center overflow-hidden rounded-xl border bg-background">
           {value ? (
             <img src={value} alt={`${businessName || "Tenant"} logo preview`} className="h-full w-full object-contain p-2" />
@@ -264,10 +301,14 @@ function TenantLogoUpload({
           )}
         </div>
         <div className="min-w-0 flex-1 space-y-3">
-          <p className="text-sm text-muted-foreground">Upload a PNG, JPEG, or WebP image up to 1 MB. It will appear only in this tenant.</p>
+          <p className="text-sm text-muted-foreground">Upload or paste a PNG, JPEG, or WebP image up to 1 MB. It will appear only in this tenant.</p>
           <div className="flex flex-wrap gap-2">
             <Button type="button" variant="outline" className="h-11 gap-2" asChild>
               <label htmlFor={id} className="cursor-pointer"><Upload className="h-4 w-4" />Choose image</label>
+            </Button>
+            <Button type="button" variant="outline" className="h-11 gap-2" onClick={pasteFromClipboard}>
+              <ClipboardPaste className="h-4 w-4" />
+              Paste image
             </Button>
             {value && <Button type="button" variant="ghost" className="h-11" onClick={() => onChange("")}>Remove logo</Button>}
           </div>

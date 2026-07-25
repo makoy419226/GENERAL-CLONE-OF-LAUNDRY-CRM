@@ -101,7 +101,7 @@ import { filterBills } from "@shared/billFilters";
 import { normalizePhoneForComparison } from "@shared/phone";
 import { normalizeStoredProductCategoryName } from "@shared/productCategories";
 import type { Product, Client, Bill, Order, PackingWorker, ClientTransaction } from "@shared/schema";
-import logoImage from "@assets/image_1769169126339.png";
+import logoImage from "@/assets/images/lwl-logo.png";
 
 const BILLS_INITIAL_LOAD_COUNT = 50;
 const BILLS_LOAD_MORE_COUNT = 30;

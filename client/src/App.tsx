@@ -276,11 +276,15 @@ function App() {
   }, []);
 
   const handleLogin = (userData: UserInfo) => {
+    // Query keys are shared across tenants. Never let an account inherit
+    // another tenant's in-memory staff, inventory, or operational data.
+    queryClient.clear();
     setIsLoggedIn(true);
     setUser(userData);
   };
 
   const handleLogout = useCallback(() => {
+    queryClient.clear();
     void fetch("/api/auth/logout", {
       method: "POST",
       credentials: "include",

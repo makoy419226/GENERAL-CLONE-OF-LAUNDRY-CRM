@@ -7,17 +7,14 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import {
   Building2,
-  ClipboardList,
   Eye,
   EyeOff,
   KeyRound,
   Loader2,
   Lock,
   Mail,
-  ServerCog,
   ShieldCheck,
   User,
-  Users,
 } from "lucide-react";
 import { AppleMotionBackdrop } from "@/components/AppleMotion";
 import { useToast } from "@/hooks/use-toast";
@@ -253,7 +250,7 @@ export default function Login({ onLogin }: LoginProps) {
       <AppleMotionBackdrop className="opacity-75" />
       <div className="relative z-10 flex flex-1 items-center justify-center p-4">
         <motion.div
-          className="flex w-full max-w-5xl flex-col items-center gap-8 lg:flex-row"
+          className="w-full max-w-md"
           variants={loginStageVariants}
           initial="hidden"
           animate="visible"
@@ -261,43 +258,6 @@ export default function Login({ onLogin }: LoginProps) {
           <motion.div className="w-full max-w-md" variants={loginPanelVariants}>
             <Card className="w-full shadow-2xl liquid-glass">
               <CardHeader className="space-y-5 pb-3 text-center">
-                <div
-                  className="grid grid-cols-2 gap-1 rounded-xl border bg-muted/70 p-1"
-                  role="group"
-                  aria-label="Choose login portal"
-                >
-                  <button
-                    type="button"
-                    aria-pressed={loginPortal === "tenant"}
-                    disabled={isLoading}
-                    className={`flex min-h-12 items-center justify-center gap-2 rounded-lg px-3 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60 ${
-                      loginPortal === "tenant"
-                        ? "bg-background text-foreground shadow-sm"
-                        : "text-muted-foreground hover:text-foreground"
-                    }`}
-                    onClick={() => switchLoginPortal("tenant")}
-                    data-testid="button-tenant-login-portal"
-                  >
-                    <Building2 className="h-4 w-4" aria-hidden="true" />
-                    Tenant Login
-                  </button>
-                  <button
-                    type="button"
-                    aria-pressed={loginPortal === "super_admin"}
-                    disabled={isLoading}
-                    className={`flex min-h-12 items-center justify-center gap-2 rounded-lg px-3 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60 ${
-                      loginPortal === "super_admin"
-                        ? "bg-slate-950 text-white shadow-sm"
-                        : "text-muted-foreground hover:text-foreground"
-                    }`}
-                    onClick={() => switchLoginPortal("super_admin")}
-                    data-testid="button-super-admin-login-portal"
-                  >
-                    <ShieldCheck className="h-4 w-4" aria-hidden="true" />
-                    Super Admin
-                  </button>
-                </div>
-
                 <AnimatePresence mode="wait" initial={false}>
                   <motion.div
                     key={loginPortal}
@@ -400,121 +360,40 @@ export default function Login({ onLogin }: LoginProps) {
                         onClick={() => setShowForgotPassword(true)}
                         data-testid="button-forgot-password"
                       >
-                        Forgot super admin password?
+                        Forgot console password?
                       </Button>
                     </div>
                   )}
                 </form>
 
-                <div className="mt-5 border-t pt-4">
-                  {loginPortal === "tenant" ? (
-                    <div className="flex gap-3 rounded-lg bg-muted/60 p-3 text-left">
-                      <Users className="mt-0.5 h-4 w-4 shrink-0 text-primary" aria-hidden="true" />
-                      <p className="text-xs leading-relaxed text-muted-foreground">
-                        Your username and password are issued and managed by the platform super admin.
-                      </p>
-                    </div>
-                  ) : (
-                    <div className="flex gap-3 rounded-lg bg-emerald-500/10 p-3 text-left">
-                      <ServerCog className="mt-0.5 h-4 w-4 shrink-0 text-emerald-700 dark:text-emerald-300" aria-hidden="true" />
-                      <p className="text-xs leading-relaxed text-muted-foreground">
-                        Password recovery uses platform-managed email delivery. SMTP credentials remain protected inside the console.
-                      </p>
-                    </div>
-                  )}
-                </div>
               </CardContent>
             </Card>
-          </motion.div>
-
-          <motion.div className="hidden flex-1 lg:block" variants={loginPanelVariants}>
-            <AnimatePresence mode="wait" initial={false}>
-              {loginPortal === "tenant" ? (
-                <motion.div
-                  key="tenant-details"
-                  className="overflow-hidden rounded-3xl border bg-card/85 p-8 shadow-xl backdrop-blur"
-                  initial={{ opacity: 0, x: 12 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  exit={{ opacity: 0, x: -10 }}
-                  transition={{ duration: 0.2, ease: appleEase }}
-                >
-                  <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-primary text-primary-foreground">
-                    <Building2 className="h-7 w-7" aria-hidden="true" />
-                  </div>
-                  <p className="mt-7 text-xs font-semibold uppercase tracking-[0.18em] text-primary">
-                    Tenant users
-                  </p>
-                  <h2 className="mt-2 text-3xl font-semibold tracking-tight text-foreground">Your business workspace</h2>
-                  <p className="mt-3 max-w-lg text-sm leading-6 text-muted-foreground">
-                    Sign in with the credentials issued for your organization. The platform automatically opens the correct tenant.
-                  </p>
-
-                  <div className="mt-8 space-y-3">
-                    {[
-                      { icon: ClipboardList, title: "Daily operations", detail: "Manage orders, status workflows, and service activity." },
-                      { icon: Users, title: "Customers and staff", detail: "Work only with records assigned to your organization." },
-                      { icon: KeyRound, title: "Managed access", detail: "Credentials and roles are controlled by the platform owner." },
-                    ].map((feature) => (
-                      <div key={feature.title} className="flex gap-4 rounded-xl border bg-background/70 p-4">
-                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                          <feature.icon className="h-5 w-5" aria-hidden="true" />
-                        </div>
-                        <div>
-                          <h3 className="font-semibold text-foreground">{feature.title}</h3>
-                          <p className="mt-1 text-sm leading-5 text-muted-foreground">{feature.detail}</p>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </motion.div>
-              ) : (
-                <motion.div
-                  key="super-admin-details"
-                  className="overflow-hidden rounded-3xl border border-slate-700 bg-slate-950 p-8 text-slate-100 shadow-2xl"
-                  initial={{ opacity: 0, x: 12 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  exit={{ opacity: 0, x: -10 }}
-                  transition={{ duration: 0.2, ease: appleEase }}
-                >
-                  <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-emerald-400 text-slate-950">
-                    <ShieldCheck className="h-7 w-7" aria-hidden="true" />
-                  </div>
-                  <p className="mt-7 text-xs font-semibold uppercase tracking-[0.18em] text-emerald-300">
-                    Platform owner only
-                  </p>
-                  <h2 className="mt-2 text-3xl font-semibold tracking-tight">One secure control plane</h2>
-                  <p className="mt-3 max-w-lg text-sm leading-6 text-slate-300">
-                    Manage every tenant without entering a tenant workspace or exposing platform credentials.
-                  </p>
-
-                  <div className="mt-8 space-y-3">
-                    {[
-                      { icon: Building2, title: "Tenant lifecycle", detail: "Create, activate, suspend, and configure organizations." },
-                      { icon: Users, title: "Account governance", detail: "Issue usernames, roles, and password resets for tenant users." },
-                      { icon: ServerCog, title: "SMTP ownership", detail: "Keep email credentials inside the protected Platform Console." },
-                    ].map((feature) => (
-                      <div key={feature.title} className="flex gap-4 rounded-xl border border-white/10 bg-white/5 p-4">
-                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-emerald-400/15 text-emerald-300">
-                          <feature.icon className="h-5 w-5" aria-hidden="true" />
-                        </div>
-                        <div>
-                          <h3 className="font-semibold">{feature.title}</h3>
-                          <p className="mt-1 text-sm leading-5 text-slate-400">{feature.detail}</p>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
           </motion.div>
         </motion.div>
       </div>
 
+      <Button
+        type="button"
+        variant="outline"
+        className="fixed bottom-4 right-4 z-20 h-11 gap-2 bg-background/90 shadow-lg backdrop-blur sm:bottom-6 sm:right-6"
+        disabled={isLoading}
+        onClick={() =>
+          switchLoginPortal(loginPortal === "tenant" ? "super_admin" : "tenant")
+        }
+        data-testid="button-switch-login-portal"
+      >
+        {loginPortal === "tenant" ? (
+          <ShieldCheck className="h-4 w-4" aria-hidden="true" />
+        ) : (
+          <Building2 className="h-4 w-4" aria-hidden="true" />
+        )}
+        {loginPortal === "tenant" ? "Console" : "Tenant Login"}
+      </Button>
+
       <Dialog open={showForgotPassword} onOpenChange={closeForgotPassword}>
         <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Reset super admin password</DialogTitle>
+            <DialogTitle>Reset console password</DialogTitle>
             <DialogDescription>
               {resetStep === "email" && "Enter the platform-owner email address to receive a reset code."}
               {resetStep === "code" && "Enter the 6-digit code sent to your email."}

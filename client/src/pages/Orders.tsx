@@ -331,8 +331,7 @@ import { normalizePhoneForComparison } from "@shared/phone";
 import { useSearch, useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { getProductImage as getStockProductImage } from "@/lib/productImages";
-import logoImage from "@assets/image_1769169126339.png";
-import tagLogoImage from "@assets/image_1771496445766.png";
+import logoImage from "@/assets/images/lwl-logo.png";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -1227,7 +1226,7 @@ export default function Orders() {
         setTagLogoBase64(canvas.toDataURL("image/png"));
       }
     };
-    tagImg.src = tagLogoImage;
+    tagImg.src = logoImage;
   }, []);
 
   const searchString = useSearch();

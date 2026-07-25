@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect, useCallback, useRef, type MouseEvent as ReactMouseEvent } from "react";
 import { useLocation, useSearch } from "wouter";
 import { TopBar } from "@/components/TopBar";
-import logoImage from "@assets/image_1769169126339.png";
+import logoImage from "@/assets/images/lwl-logo.png";
 import { useClients, useDeleteClient } from "@/hooks/use-clients";
 import {
   Loader2,

@@ -1,4 +1,4 @@
-import { db } from "./db";
+import { db, getCurrentDatabaseScope } from "./db";
 import bcrypt from "bcryptjs";
 import {
   products,
@@ -81,6 +81,11 @@ type OrderTrackingQueryOptions = {
   deliveryType?: "all" | "takeaway" | "delivery";
   paymentStatus?: "all" | "paid" | "unpaid";
 };
+
+function currentTenantBusinessId(): number | null {
+  const scope = getCurrentDatabaseScope();
+  return scope && "businessId" in scope ? scope.businessId : null;
+}
 
 function normalizeTrackingExactBillNumber(value?: string | null): string {
   return String(value ?? "")
@@ -676,33 +681,49 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getProducts(search?: string): Promise<Product[]> {
+    const businessId = currentTenantBusinessId();
+    const tenantFilter = businessId ? eq(products.businessId, businessId) : undefined;
     if (search) {
       const searchPattern = `%${search}%`;
       return await db
         .select()
         .from(products)
         .where(
-          or(
-            ilike(products.name, searchPattern),
-            ilike(products.description || "", searchPattern),
+          and(
+            tenantFilter,
+            or(
+              ilike(products.name, searchPattern),
+              ilike(products.description || "", searchPattern),
+            ),
           ),
         );
     }
-    return await db.select().from(products);
+    return tenantFilter
+      ? db.select().from(products).where(tenantFilter)
+      : db.select().from(products);
   }
 
   async getProduct(id: number): Promise<Product | undefined> {
+    const businessId = currentTenantBusinessId();
     const [product] = await db
       .select()
       .from(products)
-      .where(eq(products.id, id));
+      .where(
+        businessId
+          ? and(eq(products.id, id), eq(products.businessId, businessId))
+          : eq(products.id, id),
+      );
     return product;
   }
 
   async createProduct(insertProduct: InsertProduct): Promise<Product> {
+    const businessId = currentTenantBusinessId();
     const [product] = await db
       .insert(products)
-      .values(insertProduct)
+      .values({
+        ...insertProduct,
+        ...(businessId ? { businessId } : {}),
+      })
       .returning();
     return product;
   }
@@ -711,6 +732,7 @@ export class DatabaseStorage implements IStorage {
     id: number,
     updates: UpdateProductRequest,
   ): Promise<Product> {
+    const businessId = currentTenantBusinessId();
     // Helper to convert empty/zero strings to null for optional price fields
     const toNullIfEmpty = (val: string | null | undefined): string | null => {
       if (val === "" || val === null || val === undefined) return null;
@@ -732,13 +754,22 @@ export class DatabaseStorage implements IStorage {
     const [updated] = await db
       .update(products)
       .set(cleanedUpdates)
-      .where(eq(products.id, id))
+      .where(
+        businessId
+          ? and(eq(products.id, id), eq(products.businessId, businessId))
+          : eq(products.id, id),
+      )
       .returning();
     return updated;
   }
 
   async deleteProduct(id: number): Promise<void> {
-    await db.delete(products).where(eq(products.id, id));
+    const businessId = currentTenantBusinessId();
+    await db.delete(products).where(
+      businessId
+        ? and(eq(products.id, id), eq(products.businessId, businessId))
+        : eq(products.id, id),
+    );
   }
 
   async getClients(search?: string): Promise<Client[]> {
@@ -3085,49 +3116,91 @@ export class DatabaseStorage implements IStorage {
 
   // Staff members methods
   async getStaffMembers(roleType?: string): Promise<StaffMember[]> {
+    const businessId = currentTenantBusinessId();
+    const tenantFilter = businessId ? eq(staffMembers.businessId, businessId) : undefined;
     if (roleType) {
-      return await db.select().from(staffMembers).where(eq(staffMembers.roleType, roleType));
+      return await db
+        .select()
+        .from(staffMembers)
+        .where(and(tenantFilter, eq(staffMembers.roleType, roleType)));
     }
-    return await db.select().from(staffMembers);
+    return tenantFilter
+      ? db.select().from(staffMembers).where(tenantFilter)
+      : db.select().from(staffMembers);
   }
 
   async getStaffMember(id: number): Promise<StaffMember | undefined> {
-    const [member] = await db.select().from(staffMembers).where(eq(staffMembers.id, id));
+    const businessId = currentTenantBusinessId();
+    const [member] = await db.select().from(staffMembers).where(
+      businessId
+        ? and(eq(staffMembers.id, id), eq(staffMembers.businessId, businessId))
+        : eq(staffMembers.id, id),
+    );
     return member;
   }
 
   async createStaffMember(member: InsertStaffMember): Promise<StaffMember> {
+    const businessId = currentTenantBusinessId();
     const [created] = await db.insert(staffMembers).values({
       name: member.name,
       pin: member.pin,
       roleType: member.roleType,
       active: true,
+      ...(businessId ? { businessId } : {}),
     }).returning();
     return created;
   }
 
   async updateStaffMember(id: number, updates: Partial<{ name: string; pin: string; active: boolean }>): Promise<StaffMember> {
-    const [updated] = await db.update(staffMembers).set(updates).where(eq(staffMembers.id, id)).returning();
+    const businessId = currentTenantBusinessId();
+    const [updated] = await db
+      .update(staffMembers)
+      .set(updates)
+      .where(
+        businessId
+          ? and(eq(staffMembers.id, id), eq(staffMembers.businessId, businessId))
+          : eq(staffMembers.id, id),
+      )
+      .returning();
     return updated;
   }
 
   async deleteStaffMember(id: number): Promise<void> {
-    await db.delete(staffMembers).where(eq(staffMembers.id, id));
+    const businessId = currentTenantBusinessId();
+    await db.delete(staffMembers).where(
+      businessId
+        ? and(eq(staffMembers.id, id), eq(staffMembers.businessId, businessId))
+        : eq(staffMembers.id, id),
+    );
   }
 
   async verifyStaffMemberPin(pin: string): Promise<StaffMember | null> {
+    const businessId = currentTenantBusinessId();
     // For login verification, only check active members
-    const [member] = await db.select().from(staffMembers).where(and(eq(staffMembers.pin, pin), eq(staffMembers.active, true)));
+    const [member] = await db.select().from(staffMembers).where(and(
+      businessId ? eq(staffMembers.businessId, businessId) : undefined,
+      eq(staffMembers.pin, pin),
+      eq(staffMembers.active, true),
+    ));
     return member || null;
   }
 
   async checkStaffMemberPinExists(pin: string, excludeId?: number): Promise<boolean> {
+    const businessId = currentTenantBusinessId();
+    const tenantFilter = businessId ? eq(staffMembers.businessId, businessId) : undefined;
     // For creation/update validation, check ALL staff members (including inactive)
     if (excludeId) {
-      const existing = await db.select().from(staffMembers).where(and(eq(staffMembers.pin, pin), ne(staffMembers.id, excludeId)));
+      const existing = await db.select().from(staffMembers).where(and(
+        tenantFilter,
+        eq(staffMembers.pin, pin),
+        ne(staffMembers.id, excludeId),
+      ));
       return existing.length > 0;
     }
-    const existing = await db.select().from(staffMembers).where(eq(staffMembers.pin, pin));
+    const existing = await db.select().from(staffMembers).where(and(
+      tenantFilter,
+      eq(staffMembers.pin, pin),
+    ));
     return existing.length > 0;
   }
 

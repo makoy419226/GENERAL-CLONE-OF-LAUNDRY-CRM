@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Loader2, CheckCircle, Clock, Package, Truck, Shirt, X, Camera } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import logoImage from "@assets/image_1767220512226.png";
+import logoImage from "@/assets/images/lwl-logo.png";
 import { InvoiceItemDescription } from "@/components/InvoiceItemDescription";
 
 interface PublicOrderData {

@@ -8,7 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Loader2, CheckCircle, Clock, Package, Truck, Shirt, Search, ArrowLeft, AlertCircle, X, Camera, Star } from "lucide-react";
 import { format } from "date-fns";
-import logoImage from "@assets/image_1767220512226.png";
+import logoImage from "@/assets/images/lwl-logo.png";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
 import { InvoiceItemDescription } from "@/components/InvoiceItemDescription";

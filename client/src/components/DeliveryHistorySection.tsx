@@ -23,7 +23,7 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
-import logoImage from "@assets/image_1769169126339.png";
+import logoImage from "@/assets/images/lwl-logo.png";
 import type { Client, Order } from "@shared/schema";
 
 const deliveryLogPeriods = [

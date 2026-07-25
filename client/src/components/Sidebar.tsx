@@ -294,7 +294,7 @@ export function Sidebar({ user, onLogout }: SidebarProps) {
               <div className="flex-1 min-w-0">
                 <p className="font-semibold text-foreground truncate">{user.name || user.username}</p>
                 <Badge variant="secondary" className="text-xs capitalize">
-                  {user.role === "super_admin" ? "Super Admin" : user.role === "counter" ? "Counter" : user.role === "section" ? "Section" : user.role}
+                  {user.role === "super_admin" ? "Console" : user.role === "counter" ? "Counter" : user.role === "section" ? "Section" : user.role}
                 </Badge>
                 {user.businessName && (
                   <p className="mt-1 truncate text-[11px] text-muted-foreground">{user.businessName}</p>
