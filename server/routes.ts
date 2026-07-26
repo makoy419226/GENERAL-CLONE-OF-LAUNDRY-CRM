@@ -3413,9 +3413,61 @@ export async function registerRoutes(
     }
   });
 
+  type PasswordResetPortal = "tenant" | "super_admin";
+
+  const parsePasswordResetPortal = (value: unknown): PasswordResetPortal =>
+    value === "tenant" ? "tenant" : "super_admin";
+
+  const findPasswordResetAccount = async (
+    email: string,
+    portal: PasswordResetPortal,
+  ) => {
+    if (portal === "super_admin") {
+      const [account] = await db
+        .select({ user: users, businessName: sql<string | null>`null` })
+        .from(users)
+        .where(
+          and(
+            sql`lower(${users.email}) = ${email}`,
+            eq(users.role, "super_admin"),
+            eq(users.active, true),
+            isNull(users.businessId),
+          ),
+        )
+        .limit(1);
+      return account;
+    }
+
+    const accounts = await db
+      .select({
+        user: users,
+        businessName: laundryBusinesses.name,
+      })
+      .from(users)
+      .innerJoin(
+        laundryBusinesses,
+        eq(users.businessId, laundryBusinesses.id),
+      )
+      .where(
+        and(
+          sql`lower(${users.email}) = ${email}`,
+          eq(users.role, "admin"),
+          eq(users.active, true),
+          eq(laundryBusinesses.active, true),
+          sql`lower(${laundryBusinesses.contactEmail}) = ${email}`,
+        ),
+      )
+      .limit(2);
+
+    // Never guess between tenants if the same contact email was registered
+    // more than once. This keeps recovery tenant-specific.
+    return accounts.length === 1 ? accounts[0] : undefined;
+  };
+
   // Request password reset
   app.post("/api/auth/forgot-password", async (req, res) => {
     const { email } = req.body;
+    const portal = parsePasswordResetPortal(req.body?.portal);
     const normalizedEmail = String(email || "").trim().toLowerCase();
 
     if (!normalizedEmail) {
@@ -3424,28 +3476,30 @@ export async function registerRoutes(
         .json({ success: false, message: "Email is required" });
     }
 
-    const [user] = await db
-      .select()
-      .from(users)
-      .where(
-        and(
-          sql`lower(${users.email}) = ${normalizedEmail}`,
-          eq(users.role, "super_admin"),
-          isNull(users.businessId),
-        ),
-      );
+    const account = await findPasswordResetAccount(normalizedEmail, portal);
+    const user = account?.user;
 
     if (!user) {
       return res
         .status(404)
-        .json({ success: false, message: "No user found with this email" });
+        .json({
+          success: false,
+          message:
+            portal === "tenant"
+              ? "No active tenant administrator uses this registered contact email"
+              : "No Console account uses this email",
+        });
     }
-    if (user.role !== "super_admin" || user.businessId) {
-      return res.status(403).json({
-        success: false,
-        message: "SMTP password recovery is available only for the platform owner",
-      });
-    }
+
+    await db
+      .update(passwordResetTokens)
+      .set({ used: true })
+      .where(
+        and(
+          eq(passwordResetTokens.userId, user.id),
+          eq(passwordResetTokens.used, false),
+        ),
+      );
 
     const resetCode = Math.floor(100000 + Math.random() * 900000).toString();
     const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
@@ -3453,10 +3507,10 @@ export async function registerRoutes(
     const [createdToken] = await db
       .insert(passwordResetTokens)
       .values({
-      userId: user.id,
-      token: resetCode,
-      expiresAt,
-      used: false,
+        userId: user.id,
+        token: resetCode,
+        expiresAt,
+        used: false,
       })
       .returning({ id: passwordResetTokens.id });
 
@@ -3465,6 +3519,9 @@ export async function registerRoutes(
         normalizedEmail,
         resetCode,
         user.name || user.username,
+        portal === "tenant"
+          ? `${account?.businessName || "Tenant"} administrator`
+          : "Console administrator",
       );
 
       res.json({
@@ -3490,6 +3547,7 @@ export async function registerRoutes(
   // Verify reset code
   app.post("/api/auth/verify-reset-code", async (req, res) => {
     const { email, code } = req.body;
+    const portal = parsePasswordResetPortal(req.body?.portal);
     const normalizedEmail = String(email || "").trim().toLowerCase();
 
     if (!normalizedEmail || !code) {
@@ -3498,26 +3556,12 @@ export async function registerRoutes(
         .json({ success: false, message: "Email and code are required" });
     }
 
-    const [user] = await db
-      .select()
-      .from(users)
-      .where(
-        and(
-          sql`lower(${users.email}) = ${normalizedEmail}`,
-          eq(users.role, "super_admin"),
-          isNull(users.businessId),
-        ),
-      );
+    const account = await findPasswordResetAccount(normalizedEmail, portal);
+    const user = account?.user;
     if (!user) {
       return res
         .status(404)
         .json({ success: false, message: "User not found" });
-    }
-    if (user.role !== "super_admin" || user.businessId) {
-      return res.status(403).json({
-        success: false,
-        message: "SMTP password recovery is available only for the platform owner",
-      });
     }
 
     const [token] = await db
@@ -3544,6 +3588,7 @@ export async function registerRoutes(
   // Reset password
   app.post("/api/auth/reset-password", async (req, res) => {
     const { email, code, newPassword } = req.body;
+    const portal = parsePasswordResetPortal(req.body?.portal);
     const normalizedEmail = String(email || "").trim().toLowerCase();
 
     if (!normalizedEmail || !code || !newPassword) {
@@ -3562,26 +3607,12 @@ export async function registerRoutes(
       });
     }
 
-    const [user] = await db
-      .select()
-      .from(users)
-      .where(
-        and(
-          sql`lower(${users.email}) = ${normalizedEmail}`,
-          eq(users.role, "super_admin"),
-          isNull(users.businessId),
-        ),
-      );
+    const account = await findPasswordResetAccount(normalizedEmail, portal);
+    const user = account?.user;
     if (!user) {
       return res
         .status(404)
         .json({ success: false, message: "User not found" });
-    }
-    if (user.role !== "super_admin" || user.businessId) {
-      return res.status(403).json({
-        success: false,
-        message: "SMTP password recovery is available only for the platform owner",
-      });
     }
 
     const [token] = await db

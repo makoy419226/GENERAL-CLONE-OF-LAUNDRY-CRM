@@ -147,7 +147,7 @@ export default function Login({ onLogin }: LoginProps) {
       const response = await fetch("/api/auth/forgot-password", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: resetEmail }),
+        body: JSON.stringify({ email: resetEmail, portal: loginPortal }),
       });
       const data = await response.json();
       if (data.success) {
@@ -181,7 +181,7 @@ export default function Login({ onLogin }: LoginProps) {
       const response = await fetch("/api/auth/verify-reset-code", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: resetEmail, code: resetCode }),
+        body: JSON.stringify({ email: resetEmail, code: resetCode, portal: loginPortal }),
       });
       const data = await response.json();
       if (data.success) {
@@ -215,7 +215,12 @@ export default function Login({ onLogin }: LoginProps) {
       const response = await fetch("/api/auth/reset-password", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: resetEmail, code: resetCode, newPassword }),
+        body: JSON.stringify({
+          email: resetEmail,
+          code: resetCode,
+          newPassword,
+          portal: loginPortal,
+        }),
       });
       const data = await response.json();
       if (data.success) {
@@ -351,19 +356,19 @@ export default function Login({ onLogin }: LoginProps) {
                     {loginPortal === "super_admin" ? "Open Platform Console" : "Open Tenant Workspace"}
                   </Button>
 
-                  {loginPortal === "super_admin" && (
-                    <div className="text-center">
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        className="min-h-11 text-sm text-muted-foreground"
-                        onClick={() => setShowForgotPassword(true)}
-                        data-testid="button-forgot-password"
-                      >
-                        Forgot console password?
-                      </Button>
-                    </div>
-                  )}
+                  <div className="text-center">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      className="min-h-11 text-sm text-muted-foreground"
+                      onClick={() => setShowForgotPassword(true)}
+                      data-testid="button-forgot-password"
+                    >
+                      {loginPortal === "super_admin"
+                        ? "Forgot console password?"
+                        : "Forgot tenant password?"}
+                    </Button>
+                  </div>
                 </form>
 
               </CardContent>
@@ -393,9 +398,16 @@ export default function Login({ onLogin }: LoginProps) {
       <Dialog open={showForgotPassword} onOpenChange={closeForgotPassword}>
         <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Reset console password</DialogTitle>
+            <DialogTitle>
+              {loginPortal === "super_admin"
+                ? "Reset console password"
+                : "Reset tenant password"}
+            </DialogTitle>
             <DialogDescription>
-              {resetStep === "email" && "Enter the platform-owner email address to receive a reset code."}
+              {resetStep === "email" &&
+                (loginPortal === "super_admin"
+                  ? "Enter the Console account email address to receive a reset code."
+                  : "Enter the tenant's registered contact email to receive a reset code.")}
               {resetStep === "code" && "Enter the 6-digit code sent to your email."}
               {resetStep === "newPassword" && "Create a new password for your account."}
             </DialogDescription>

@@ -40,6 +40,19 @@ function maskEmail(email: string) {
   return `${visibleLocalPart}${hiddenPart}${domainPart}`;
 }
 
+function escapeHtml(value: string) {
+  return value.replace(/[&<>"']/g, (character) => {
+    const entities: Record<string, string> = {
+      "&": "&amp;",
+      "<": "&lt;",
+      ">": "&gt;",
+      '"': "&quot;",
+      "'": "&#039;",
+    };
+    return entities[character];
+  });
+}
+
 async function sendEmailViaSmtp({ toEmail, subject, html }: EmailPayload) {
   const port = parseInt(process.env.SMTP_PORT?.trim() || "587", 10);
   const secure = process.env.SMTP_SECURE?.trim().toLowerCase() === "true" || port === 465;
@@ -72,7 +85,7 @@ async function sendEmailViaSmtp({ toEmail, subject, html }: EmailPayload) {
       });
 
       await transporter.sendMail({
-        from: `"Laundry CRM Super Admin" <${fromEmail}>`,
+        from: `"Laundry CRM" <${fromEmail}>`,
         to: toEmail,
         subject,
         html,
@@ -143,16 +156,19 @@ export async function sendUserPasswordResetEmail(
   toEmail: string,
   resetCode: string,
   userName: string,
+  accountLabel = "account",
 ) {
+  const safeUserName = escapeHtml(userName);
+  const safeAccountLabel = escapeHtml(accountLabel);
   return deliverPasswordResetEmail(
     {
       toEmail,
-      subject: "Super Admin Password Reset - Laundry CRM",
+      subject: "Password Reset Code - Laundry CRM",
       html: `
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
-          <h2 style="color: #2563eb;">Laundry CRM Super Admin Password Reset</h2>
-          <p>Hello ${userName},</p>
-          <p>You requested to reset the super-admin password for Laundry CRM.</p>
+          <h2 style="color: #2563eb;">Laundry CRM Password Reset</h2>
+          <p>Hello ${safeUserName},</p>
+          <p>You requested to reset the password for your ${safeAccountLabel} account.</p>
           <p>Your password reset code is:</p>
           <div style="background-color: #f3f4f6; padding: 20px; text-align: center; border-radius: 8px; margin: 20px 0;">
             <h1 style="color: #2563eb; letter-spacing: 8px; margin: 0;">${resetCode}</h1>
@@ -160,7 +176,7 @@ export async function sendUserPasswordResetEmail(
           <p>This code will expire in 15 minutes.</p>
           <p>If you did not request this reset, please ignore this email.</p>
           <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 20px 0;">
-          <p style="color: #6b7280; font-size: 12px;">Laundry CRM · Super-admin security notification</p>
+          <p style="color: #6b7280; font-size: 12px;">Laundry CRM · Account security notification</p>
         </div>
       `,
     },
