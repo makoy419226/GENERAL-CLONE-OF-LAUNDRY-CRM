@@ -3253,13 +3253,7 @@ export class DatabaseStorage implements IStorage {
         ...(business
           ? {
               companyName: business.name,
-              telephone: business.telephone || existing.telephone,
-              mobilePhone: business.mobilePhone || business.phone || existing.mobilePhone,
-              whatsappPhone:
-                business.mobilePhone || business.phone || existing.whatsappPhone,
               email: business.contactEmail || existing.email,
-              website: business.website || existing.website,
-              addressLine1: business.address || existing.addressLine1,
             }
           : {}),
       };
@@ -3273,13 +3267,7 @@ export class DatabaseStorage implements IStorage {
       ? {
           ...created,
           companyName: business.name,
-          telephone: business.telephone || created.telephone,
-          mobilePhone: business.mobilePhone || business.phone || created.mobilePhone,
-          whatsappPhone:
-            business.mobilePhone || business.phone || created.whatsappPhone,
           email: business.contactEmail || created.email,
-          website: business.website || created.website,
-          addressLine1: business.address || created.addressLine1,
         }
       : created;
   }

@@ -18,10 +18,6 @@ async function runMultiTenantFoundationMigrationWithinPlatformScope() {
       active BOOLEAN NOT NULL DEFAULT TRUE,
       contact_email TEXT,
       phone TEXT,
-      telephone TEXT,
-      mobile_phone TEXT,
-      website TEXT,
-      address TEXT,
       logo_url TEXT,
       smtp_host TEXT,
       smtp_port INTEGER DEFAULT 587,
@@ -32,14 +28,6 @@ async function runMultiTenantFoundationMigrationWithinPlatformScope() {
       created_at TIMESTAMP NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMP NOT NULL DEFAULT NOW()
     )
-  `);
-
-  await db.execute(sql`
-    ALTER TABLE laundry_businesses
-      ADD COLUMN IF NOT EXISTS telephone TEXT,
-      ADD COLUMN IF NOT EXISTS mobile_phone TEXT,
-      ADD COLUMN IF NOT EXISTS website TEXT,
-      ADD COLUMN IF NOT EXISTS address TEXT
   `);
 
   await db.execute(sql`

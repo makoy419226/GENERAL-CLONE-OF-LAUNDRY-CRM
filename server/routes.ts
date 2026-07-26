@@ -1522,8 +1522,11 @@ export async function registerRoutes(
     `);
   };
 
+  const runtimeSchemaMigrationsEnabled =
+    process.env.NODE_ENV !== "production" ||
+    process.env.ENABLE_RUNTIME_SCHEMA_MIGRATIONS === "true";
   let deliveryChargeSchemaReady = false;
-  if (await ensureStartupDatabaseAccess()) {
+  if (runtimeSchemaMigrationsEnabled && await ensureStartupDatabaseAccess()) {
     try {
       await ensureDeliveryChargeColumns();
       deliveryChargeSchemaReady = true;
@@ -1866,10 +1869,7 @@ export async function registerRoutes(
   }; // end runStartupMigrations
 
   // Fire migrations in background - don't await so the server can start listening immediately
-  if (
-    process.env.NODE_ENV !== "production" ||
-    process.env.ENABLE_RUNTIME_SCHEMA_MIGRATIONS === "true"
-  ) {
+  if (runtimeSchemaMigrationsEnabled) {
     runWithPlatformDatabase(runStartupMigrations).catch((err) =>
       logStartupMigrationError("Migration error", err),
     );
@@ -2616,6 +2616,7 @@ export async function registerRoutes(
 
   const serializeManagedBusiness = (
     business: typeof laundryBusinesses.$inferSelect,
+    contact?: typeof companyContactSettings.$inferSelect | null,
   ) => ({
     id: business.id,
     name: business.name,
@@ -2626,10 +2627,10 @@ export async function registerRoutes(
     active: business.active,
     contactEmail: business.contactEmail,
     phone: business.phone,
-    telephone: business.telephone,
-    mobilePhone: business.mobilePhone,
-    website: business.website,
-    address: business.address,
+    telephone: contact?.telephone || null,
+    mobilePhone: contact?.mobilePhone || business.phone || null,
+    website: contact?.website || null,
+    address: contact?.addressLine1 || null,
     logoUrl: business.logoUrl,
     createdAt: business.createdAt,
     updatedAt: business.updatedAt,
@@ -2637,41 +2638,50 @@ export async function registerRoutes(
 
   app.get("/api/super-admin/businesses", async (req, res) => {
     if (!requireSuperAdmin(req, res)) return;
-    await ensureMultiTenantFoundation();
+    try {
+      await ensureMultiTenantFoundation();
 
-    const businessRows = await db
-      .select()
-      .from(laundryBusinesses)
-      .orderBy(desc(laundryBusinesses.createdAt));
-    const accountRows = await db
-      .select({
-        id: users.id,
-        username: users.username,
-        name: users.name,
-        email: users.email,
-        role: users.role,
-        active: users.active,
-        businessId: users.businessId,
-      })
-      .from(users)
-      .orderBy(users.username);
+      const businessRows = await db
+        .select()
+        .from(laundryBusinesses)
+        .orderBy(desc(laundryBusinesses.createdAt));
+      const accountRows = await db
+        .select({
+          id: users.id,
+          username: users.username,
+          name: users.name,
+          email: users.email,
+          role: users.role,
+          active: users.active,
+          businessId: users.businessId,
+        })
+        .from(users)
+        .orderBy(users.username);
+      const contactRows = await db.select().from(companyContactSettings);
 
-    res.json({
-      businesses: businessRows.map((business) => {
-        const businessAccounts = accountRows.filter(
-          (account) => account.businessId === business.id,
-        );
-        const administrator = businessAccounts.find(
-          (account) => account.role === "admin",
-        );
-        return {
-          ...serializeManagedBusiness(business),
-          accountCount: businessAccounts.length,
-          administrator: administrator || null,
-        };
-      }),
-      accounts: accountRows,
-    });
+      res.json({
+        businesses: businessRows.map((business) => {
+          const businessAccounts = accountRows.filter(
+            (account) => account.businessId === business.id,
+          );
+          const administrator = businessAccounts.find(
+            (account) => account.role === "admin",
+          );
+          const contact = contactRows.find(
+            (row) => row.businessId === business.id,
+          );
+          return {
+            ...serializeManagedBusiness(business, contact),
+            accountCount: businessAccounts.length,
+            administrator: administrator || null,
+          };
+        }),
+        accounts: accountRows,
+      });
+    } catch (error) {
+      console.error("Failed to load platform businesses", error);
+      res.status(500).json({ message: "Failed to load platform business data" });
+    }
   });
 
   app.post("/api/super-admin/businesses", async (req, res) => {
@@ -2698,13 +2708,20 @@ export async function registerRoutes(
             currency: parsed.data.currency,
             contactEmail: parsed.data.contactEmail || null,
             phone: parsed.data.phone || null,
-            telephone: parsed.data.telephone || null,
-            mobilePhone: parsed.data.mobilePhone || null,
-            website: parsed.data.website || null,
-            address: parsed.data.address || null,
             logoUrl: parsed.data.logoUrl || null,
           })
           .returning();
+
+        await tx.insert(companyContactSettings).values({
+          businessId: business.id,
+          companyName: business.name,
+          telephone: parsed.data.telephone || null,
+          mobilePhone: parsed.data.mobilePhone || null,
+          whatsappPhone: parsed.data.mobilePhone || null,
+          email: parsed.data.contactEmail || null,
+          website: parsed.data.website || null,
+          addressLine1: parsed.data.address || null,
+        });
 
         const [administrator] = await tx
           .insert(users)
@@ -2808,10 +2825,6 @@ export async function registerRoutes(
             currency: parsed.data.currency,
             contactEmail: parsed.data.contactEmail || null,
             phone: parsed.data.phone || null,
-            telephone: parsed.data.telephone || null,
-            mobilePhone: parsed.data.mobilePhone || null,
-            website: parsed.data.website || null,
-            address: parsed.data.address || null,
             logoUrl: parsed.data.logoUrl || null,
             updatedAt: new Date(),
           })
@@ -2819,6 +2832,33 @@ export async function registerRoutes(
           .returning();
 
         if (!business) throw new Error("Business not found");
+
+        const [existingContact] = await tx
+          .select({ id: companyContactSettings.id })
+          .from(companyContactSettings)
+          .where(eq(companyContactSettings.businessId, businessId))
+          .limit(1);
+        const contactValues = {
+          companyName: business.name,
+          telephone: parsed.data.telephone || null,
+          mobilePhone: parsed.data.mobilePhone || null,
+          whatsappPhone: parsed.data.mobilePhone || null,
+          email: parsed.data.contactEmail || null,
+          website: parsed.data.website || null,
+          addressLine1: parsed.data.address || null,
+          updatedAt: new Date(),
+        };
+        if (existingContact) {
+          await tx
+            .update(companyContactSettings)
+            .set(contactValues)
+            .where(eq(companyContactSettings.id, existingContact.id));
+        } else {
+          await tx.insert(companyContactSettings).values({
+            ...contactValues,
+            businessId,
+          });
+        }
 
         const [administrator] = await tx
           .select()
