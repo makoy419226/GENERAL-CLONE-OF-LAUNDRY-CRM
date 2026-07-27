@@ -2563,7 +2563,8 @@ export async function registerRoutes(
   });
 
   const updateBusinessInputSchema = z.object({
-    administratorId: z.coerce.number().int().positive(),
+    updateAdministrator: z.boolean().optional().default(false),
+    administratorId: z.coerce.number().int().positive().optional(),
     name: z.string().trim().min(2).max(120),
     businessType: z.string().trim().min(2).max(80),
     timezone: z.string().trim().min(3).max(80),
@@ -2575,10 +2576,38 @@ export async function registerRoutes(
     website: z.string().trim().max(200).optional().or(z.literal("")),
     address: z.string().trim().max(500).optional().or(z.literal("")),
     logoUrl: tenantLogoSchema.optional().default(""),
-    adminName: z.string().trim().min(2).max(120),
-    adminUsername: z.string().trim().min(3).max(80).regex(/^[A-Za-z0-9._-]+$/),
+    adminName: z.string().trim().max(120).optional().default(""),
+    adminUsername: z.string().trim().max(80).optional().default(""),
     adminPassword: z.string().min(8).max(200).optional().or(z.literal("")),
-  }).strict();
+  })
+    .strict()
+    .superRefine((value, context) => {
+      if (!value.updateAdministrator) return;
+      if (!value.administratorId) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["administratorId"],
+          message: "Business administrator not found",
+        });
+      }
+      if (value.adminName.trim().length < 2) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["adminName"],
+          message: "Administrator name is required",
+        });
+      }
+      if (
+        value.adminUsername.trim().length < 3 ||
+        !/^[A-Za-z0-9._-]+$/.test(value.adminUsername)
+      ) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["adminUsername"],
+          message: "Choose a valid administrator username",
+        });
+      }
+    });
 
   const tenantAccountRoleSchema = z.enum([
     "admin",
@@ -2860,48 +2889,86 @@ export async function registerRoutes(
           });
         }
 
-        const [administrator] = await tx
-          .select()
-          .from(users)
-          .where(
-            and(
-              eq(users.id, parsed.data.administratorId),
-              eq(users.businessId, businessId),
-              eq(users.role, "admin"),
-            ),
-          )
-          .limit(1);
-        if (!administrator) throw new Error("Business administrator not found");
+        let updatedAdministrator:
+          | {
+              id: number;
+              username: string;
+              name: string | null;
+              email: string | null;
+              role: string;
+              active: boolean | null;
+              businessId: number | null;
+            }
+          | undefined;
 
-        const [updatedAdministrator] = await tx
-          .update(users)
-          .set({
-            name: parsed.data.adminName,
-            username: parsed.data.adminUsername,
-            email: parsed.data.contactEmail || null,
-            ...(parsed.data.adminPassword ? { password: parsed.data.adminPassword } : {}),
-          })
-          .where(eq(users.id, administrator.id))
-          .returning({
-            id: users.id,
-            username: users.username,
-            name: users.name,
-            email: users.email,
-            role: users.role,
-            active: users.active,
-            businessId: users.businessId,
-          });
+        if (parsed.data.updateAdministrator) {
+          const [administrator] = await tx
+            .select()
+            .from(users)
+            .where(
+              and(
+                eq(users.id, parsed.data.administratorId!),
+                eq(users.businessId, businessId),
+                eq(users.role, "admin"),
+              ),
+            )
+            .limit(1);
+          if (!administrator) throw new Error("Business administrator not found");
+
+          [updatedAdministrator] = await tx
+            .update(users)
+            .set({
+              name: parsed.data.adminName,
+              username: parsed.data.adminUsername,
+              email: parsed.data.contactEmail || null,
+              ...(parsed.data.adminPassword ? { password: parsed.data.adminPassword } : {}),
+            })
+            .where(eq(users.id, administrator.id))
+            .returning({
+              id: users.id,
+              username: users.username,
+              name: users.name,
+              email: users.email,
+              role: users.role,
+              active: users.active,
+              businessId: users.businessId,
+            });
+        } else if (parsed.data.administratorId) {
+          // Keep password recovery aligned with the registered tenant contact
+          // email without making a profile save depend on administrator data.
+          [updatedAdministrator] = await tx
+            .update(users)
+            .set({ email: parsed.data.contactEmail || null })
+            .where(
+              and(
+                eq(users.id, parsed.data.administratorId),
+                eq(users.businessId, businessId),
+                eq(users.role, "admin"),
+              ),
+            )
+            .returning({
+              id: users.id,
+              username: users.username,
+              name: users.name,
+              email: users.email,
+              role: users.role,
+              active: users.active,
+              businessId: users.businessId,
+            });
+        }
 
         return { business, administrator: updatedAdministrator };
       });
 
-      forceLogoutUsers.add(result.administrator.id);
-      sendForceLogoutToUser(result.administrator.id);
+      if (parsed.data.updateAdministrator && result.administrator) {
+        forceLogoutUsers.add(result.administrator.id);
+        sendForceLogoutToUser(result.administrator.id);
+      }
 
       res.json({
         message: `${result.business.name} account settings were updated`,
         business: serializeManagedBusiness(result.business),
-        administrator: result.administrator,
+        administrator: result.administrator || null,
       });
     } catch (error) {
       const message = formatErrorMessage(error);

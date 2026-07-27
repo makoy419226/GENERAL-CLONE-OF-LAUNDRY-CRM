@@ -505,6 +505,7 @@ export default function SuperAdmin() {
         {
           ...editForm,
           administratorId: businessToEdit.administrator?.id,
+          updateAdministrator: manageTab === "administrator",
         },
       );
       return response.json();
@@ -1259,7 +1260,13 @@ function ManageTenantDialog({
   onClose: () => void;
   onSave: () => void;
 }) {
-  const canSave = form.name.trim().length >= 2 && form.adminName.trim().length >= 2 && form.adminUsername.trim().length >= 3 && (form.adminPassword.length === 0 || form.adminPassword.length >= 8);
+  const canSave =
+    form.name.trim().length >= 2 &&
+    (tab !== "administrator" ||
+      (Boolean(business?.administrator?.id) &&
+        form.adminName.trim().length >= 2 &&
+        form.adminUsername.trim().length >= 3 &&
+        (form.adminPassword.length === 0 || form.adminPassword.length >= 8)));
   return (
     <Dialog open={Boolean(business)} onOpenChange={(open) => { if (!open) onClose(); }}>
       <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-4xl">
