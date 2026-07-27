@@ -106,7 +106,7 @@ export default function Login({ onLogin }: LoginProps) {
           title: `Welcome, ${data.user.name || data.user.username}!`,
           description: data.user.role === "super_admin"
             ? "Platform Console access granted"
-            : `${data.user.businessName || "Tenant"} workspace access granted`,
+            : `${data.user.businessName || "Workspace"} workspace access granted`,
         });
         onLogin(data.user);
         setLocation(data.user.role === "super_admin" ? "/super-admin" : "/");
@@ -276,7 +276,7 @@ export default function Login({ onLogin }: LoginProps) {
                         <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 text-primary shadow-sm">
                           <Building2 className="h-7 w-7" aria-hidden="true" />
                         </div>
-                        <h1 className="text-xl font-bold tracking-tight">Tenant workspace</h1>
+                        <h1 className="text-xl font-bold tracking-tight">Workspace</h1>
                         <p className="mt-1 text-sm text-muted-foreground">
                           Sign in to your assigned business account
                         </p>
@@ -299,7 +299,7 @@ export default function Login({ onLogin }: LoginProps) {
                 <form onSubmit={handleLogin} className="space-y-4">
                   <div className="space-y-2">
                     <Label htmlFor="username">
-                      {loginPortal === "super_admin" ? "Super admin username" : "Tenant username"}
+                      {loginPortal === "super_admin" ? "Super admin username" : "Workspace username"}
                     </Label>
                     <div className="relative">
                       <User className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
@@ -353,7 +353,7 @@ export default function Login({ onLogin }: LoginProps) {
                   >
                     {isLoading && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
                     {!isLoading && (loginPortal === "super_admin" ? <ShieldCheck className="h-4 w-4" /> : <Building2 className="h-4 w-4" />)}
-                    {loginPortal === "super_admin" ? "Open Platform Console" : "Open Tenant Workspace"}
+                    {loginPortal === "super_admin" ? "Open Platform Console" : "Open Workspace"}
                   </Button>
 
                   <div className="text-center">
@@ -366,7 +366,7 @@ export default function Login({ onLogin }: LoginProps) {
                     >
                       {loginPortal === "super_admin"
                         ? "Forgot console password?"
-                        : "Forgot tenant password?"}
+                        : "Forgot workspace password?"}
                     </Button>
                   </div>
                 </form>
@@ -392,7 +392,7 @@ export default function Login({ onLogin }: LoginProps) {
         ) : (
           <Building2 className="h-4 w-4" aria-hidden="true" />
         )}
-        {loginPortal === "tenant" ? "Console" : "Tenant Login"}
+        {loginPortal === "tenant" ? "Console" : "Workspace Login"}
       </Button>
 
       <Dialog open={showForgotPassword} onOpenChange={closeForgotPassword}>
@@ -401,13 +401,13 @@ export default function Login({ onLogin }: LoginProps) {
             <DialogTitle>
               {loginPortal === "super_admin"
                 ? "Reset console password"
-                : "Reset tenant password"}
+                : "Reset workspace password"}
             </DialogTitle>
             <DialogDescription>
               {resetStep === "email" &&
                 (loginPortal === "super_admin"
                   ? "Enter the Console account email address to receive a reset code."
-                  : "Enter the tenant's registered contact email to receive a reset code.")}
+                  : "Enter the workspace's registered contact email to receive a reset code.")}
               {resetStep === "code" && "Enter the 6-digit code sent to your email."}
               {resetStep === "newPassword" && "Create a new password for your account."}
             </DialogDescription>

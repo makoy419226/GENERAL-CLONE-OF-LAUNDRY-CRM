@@ -198,14 +198,14 @@ export function Sidebar({ user, onLogout }: SidebarProps) {
           {user?.businessLogoUrl && (
             <img
               src={user.businessLogoUrl}
-              alt={`${user.businessName || "Tenant"} logo`}
+              alt={`${user.businessName || "Workspace"} logo`}
               className="max-h-12 max-w-full object-contain"
               data-testid="img-logo"
             />
           )}
           <p
             className="max-w-full truncate text-base font-bold leading-tight text-foreground"
-            data-testid="tenant-brand-name"
+            data-testid="workspace-brand-name"
           >
             {user?.businessName || "Laundry CRM"}
           </p>
@@ -320,7 +320,7 @@ export function Sidebar({ user, onLogout }: SidebarProps) {
 
         <div className="border-t border-border/70 p-3 text-center text-[10px] text-muted-foreground">
           <p className="font-medium text-foreground text-xs">{user?.businessName || "Laundry CRM"}</p>
-          <p>Tenant workspace</p>
+          <p>Workspace workspace</p>
         </div>
       </div>
     </>

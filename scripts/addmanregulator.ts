@@ -42,7 +42,7 @@ function printHelp() {
       "",
       "The command only updates the existing platform owner whose role is",
       "super_admin and whose business_id is null. It never creates a generic",
-      "administrator or changes a tenant account.",
+      "administrator or changes a workspace account.",
     ].join("\n"),
   );
 }

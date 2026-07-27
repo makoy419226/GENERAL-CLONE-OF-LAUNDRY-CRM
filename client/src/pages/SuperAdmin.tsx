@@ -92,8 +92,8 @@ type PlatformOverview = {
   accounts: PlatformAccount[];
 };
 
-type ConsoleSection = "overview" | "tenants" | "accounts";
-type TenantStatusFilter = "all" | "active" | "suspended";
+type ConsoleSection = "overview" | "workspaces" | "accounts";
+type WorkspaceStatusFilter = "all" | "active" | "suspended";
 type ManageTab = "profile" | "accounts" | "administrator";
 
 const BUSINESS_TYPES = [
@@ -183,7 +183,7 @@ function formatLabel(value: string) {
 }
 
 function getSection(location: string): ConsoleSection {
-  if (location.endsWith("/tenants")) return "tenants";
+  if (location.endsWith("/workspaces")) return "workspaces";
   if (location.endsWith("/accounts")) return "accounts";
   return "overview";
 }
@@ -234,7 +234,7 @@ function PasswordField({
   );
 }
 
-function TenantLogoUpload({
+function WorkspaceLogoUpload({
   id,
   value,
   businessName,
@@ -300,20 +300,20 @@ function TenantLogoUpload({
 
   return (
     <div className="space-y-2 sm:col-span-2">
-      <Label htmlFor={id}>Tenant logo</Label>
+      <Label htmlFor={id}>Workspace logo</Label>
       <div
         className="flex flex-col gap-4 rounded-xl border bg-muted/20 p-4 focus-within:ring-2 focus-within:ring-ring sm:flex-row sm:items-center"
         onPaste={(event) => handlePaste(event.clipboardData.items)}
       >
         <div className="flex h-24 w-24 shrink-0 items-center justify-center overflow-hidden rounded-xl border bg-background">
           {value ? (
-            <img src={value} alt={`${businessName || "Tenant"} logo preview`} className="h-full w-full object-contain p-2" />
+            <img src={value} alt={`${businessName || "Workspace"} logo preview`} className="h-full w-full object-contain p-2" />
           ) : (
             <ImageIcon className="h-8 w-8 text-muted-foreground" aria-hidden="true" />
           )}
         </div>
         <div className="min-w-0 flex-1 space-y-3">
-          <p className="text-sm text-muted-foreground">Upload or paste a PNG, JPEG, or WebP image up to 1 MB. It will appear only in this tenant.</p>
+          <p className="text-sm text-muted-foreground">Upload or paste a PNG, JPEG, or WebP image up to 1 MB. It will appear only in this workspace.</p>
           <div className="flex flex-wrap gap-2">
             <Button type="button" variant="outline" className="h-11 gap-2" asChild>
               <label htmlFor={id} className="cursor-pointer"><Upload className="h-4 w-4" />Choose image</label>
@@ -363,16 +363,16 @@ export default function SuperAdmin() {
   const [location, navigate] = useLocation();
   const section = getSection(location);
   const { toast } = useToast();
-  const [tenantDialogOpen, setTenantDialogOpen] = useState(false);
+  const [workspaceDialogOpen, setWorkspaceDialogOpen] = useState(false);
   const [slugTouched, setSlugTouched] = useState(false);
-  const [tenantForm, setTenantForm] = useState(EMPTY_TENANT_FORM);
-  const [tenantFormError, setTenantFormError] = useState("");
+  const [workspaceForm, setWorkspaceForm] = useState(EMPTY_TENANT_FORM);
+  const [workspaceFormError, setWorkspaceFormError] = useState("");
   const [businessToEdit, setBusinessToEdit] = useState<ManagedBusiness | null>(null);
   const [manageTab, setManageTab] = useState<ManageTab>("profile");
   const [editForm, setEditForm] = useState(EMPTY_EDIT_FORM);
   const [editError, setEditError] = useState("");
-  const [tenantSearch, setTenantSearch] = useState("");
-  const [tenantStatus, setTenantStatus] = useState<TenantStatusFilter>("all");
+  const [workspaceSearch, setWorkspaceSearch] = useState("");
+  const [workspaceStatus, setWorkspaceStatus] = useState<WorkspaceStatusFilter>("all");
   const [accountSearch, setAccountSearch] = useState("");
   const [accountDialogOpen, setAccountDialogOpen] = useState(false);
   const [accountBusinessLocked, setAccountBusinessLocked] = useState(false);
@@ -390,14 +390,14 @@ export default function SuperAdmin() {
 
   const businesses = data?.businesses || [];
   const accounts = data?.accounts || [];
-  const tenantAccounts = accounts.filter((account) => account.businessId !== null);
+  const workspaceAccounts = accounts.filter((account) => account.businessId !== null);
 
   const filteredBusinesses = useMemo(() => {
-    const query = tenantSearch.trim().toLowerCase();
+    const query = workspaceSearch.trim().toLowerCase();
     return businesses.filter((business) => {
       const statusMatches =
-        tenantStatus === "all" ||
-        (tenantStatus === "active" ? business.active : !business.active);
+        workspaceStatus === "all" ||
+        (workspaceStatus === "active" ? business.active : !business.active);
       const searchMatches =
         !query ||
         [
@@ -409,13 +409,13 @@ export default function SuperAdmin() {
         ].some((value) => value.toLowerCase().includes(query));
       return statusMatches && searchMatches;
     });
-  }, [businesses, tenantSearch, tenantStatus]);
+  }, [businesses, workspaceSearch, workspaceStatus]);
 
   const groupedAccounts = useMemo(() => {
     const query = accountSearch.trim().toLowerCase();
     return businesses
       .map((business) => {
-        const businessAccounts = tenantAccounts.filter(
+        const businessAccounts = workspaceAccounts.filter(
           (account) => account.businessId === business.id,
         );
         const businessMatches =
@@ -441,40 +441,40 @@ export default function SuperAdmin() {
       .filter(({ accounts: matchingAccounts, businessMatches }) =>
         !query || businessMatches || matchingAccounts.length > 0,
       );
-  }, [accountSearch, businesses, tenantAccounts]);
+  }, [accountSearch, businesses, workspaceAccounts]);
 
   const managedBusinessAccounts = useMemo(
     () =>
       businessToEdit
-        ? tenantAccounts.filter((account) => account.businessId === businessToEdit.id)
+        ? workspaceAccounts.filter((account) => account.businessId === businessToEdit.id)
         : [],
-    [businessToEdit, tenantAccounts],
+    [businessToEdit, workspaceAccounts],
   );
 
-  const createTenant = useMutation({
+  const createWorkspace = useMutation({
     mutationFn: async () => {
-      const response = await apiRequest("POST", "/api/super-admin/businesses", tenantForm);
+      const response = await apiRequest("POST", "/api/super-admin/businesses", workspaceForm);
       return response.json();
     },
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ["/api/super-admin/businesses"] });
-      setTenantDialogOpen(false);
-      setTenantForm(EMPTY_TENANT_FORM);
+      setWorkspaceDialogOpen(false);
+      setWorkspaceForm(EMPTY_TENANT_FORM);
       setSlugTouched(false);
-      setTenantFormError("");
+      setWorkspaceFormError("");
       toast({
-        title: "Tenant created",
+        title: "Workspace created",
         description: result.administratorPin
           ? `${result.message}. Administrator PIN: ${result.administratorPin}`
           : result.message,
       });
     },
     onError: (mutationError) => {
-      setTenantFormError(extractApiErrorMessage(mutationError, "Failed to create the tenant"));
+      setWorkspaceFormError(extractApiErrorMessage(mutationError, "Failed to create the workspace"));
     },
   });
 
-  const changeTenantStatus = useMutation({
+  const changeWorkspaceStatus = useMutation({
     mutationFn: async ({ id, active }: { id: number; active: boolean }) => {
       const response = await apiRequest(
         "PATCH",
@@ -485,7 +485,7 @@ export default function SuperAdmin() {
     },
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ["/api/super-admin/businesses"] });
-      toast({ title: "Tenant status updated", description: result.message });
+      toast({ title: "Workspace status updated", description: result.message });
     },
     onError: (mutationError) => {
       toast({
@@ -496,9 +496,9 @@ export default function SuperAdmin() {
     },
   });
 
-  const updateTenant = useMutation({
+  const updateWorkspace = useMutation({
     mutationFn: async () => {
-      if (!businessToEdit) throw new Error("Choose a tenant to update");
+      if (!businessToEdit) throw new Error("Choose a workspace to update");
       const response = await apiRequest(
         "PUT",
         `/api/super-admin/businesses/${businessToEdit.id}`,
@@ -515,10 +515,10 @@ export default function SuperAdmin() {
       setBusinessToEdit(null);
       setEditForm(EMPTY_EDIT_FORM);
       setEditError("");
-      toast({ title: "Tenant updated", description: result.message });
+      toast({ title: "Workspace updated", description: result.message });
     },
     onError: (mutationError) => {
-      setEditError(extractApiErrorMessage(mutationError, "Failed to update the tenant"));
+      setEditError(extractApiErrorMessage(mutationError, "Failed to update the workspace"));
     },
   });
 
@@ -540,7 +540,7 @@ export default function SuperAdmin() {
         return response.json();
       }
 
-      if (!accountForm.businessId) throw new Error("Choose a tenant");
+      if (!accountForm.businessId) throw new Error("Choose a workspace");
       const response = await apiRequest(
         "POST",
         `/api/super-admin/businesses/${accountForm.businessId}/accounts`,
@@ -626,9 +626,9 @@ export default function SuperAdmin() {
     },
   });
 
-  const updateTenantForm = (field: keyof typeof EMPTY_TENANT_FORM, value: string) => {
-    setTenantFormError("");
-    setTenantForm((current) => {
+  const updateWorkspaceForm = (field: keyof typeof EMPTY_TENANT_FORM, value: string) => {
+    setWorkspaceFormError("");
+    setWorkspaceForm((current) => {
       const next = { ...current, [field]: value };
       if (field === "name" && !slugTouched) next.slug = toSlug(value);
       return next;
@@ -643,7 +643,7 @@ export default function SuperAdmin() {
     setEditForm((current) => ({ ...current, [field]: value }));
   };
 
-  const openTenantEditor = (business: ManagedBusiness, tab: ManageTab = "profile") => {
+  const openWorkspaceEditor = (business: ManagedBusiness, tab: ManageTab = "profile") => {
     setBusinessToEdit(business);
     setManageTab(tab);
     setEditError("");
@@ -743,12 +743,12 @@ export default function SuperAdmin() {
     setBusinessToEdit(businessToRestore);
   };
 
-  const canCreateTenant =
-    tenantForm.name.trim().length >= 2 &&
-    tenantForm.slug.trim().length >= 2 &&
-    tenantForm.adminName.trim().length >= 2 &&
-    tenantForm.adminUsername.trim().length >= 3 &&
-    tenantForm.adminPassword.length >= 8;
+  const canCreateWorkspace =
+    workspaceForm.name.trim().length >= 2 &&
+    workspaceForm.slug.trim().length >= 2 &&
+    workspaceForm.adminName.trim().length >= 2 &&
+    workspaceForm.adminUsername.trim().length >= 3 &&
+    workspaceForm.adminPassword.length >= 8;
 
   const canSaveAccount =
     Boolean(accountForm.businessId) &&
@@ -774,7 +774,7 @@ export default function SuperAdmin() {
         <Card className="w-full border-destructive/30">
           <CardHeader>
             <CardTitle className="flex items-center gap-2"><ShieldAlert className="h-5 w-5 text-destructive" />Platform data unavailable</CardTitle>
-            <CardDescription>{extractApiErrorMessage(error, "Unable to load the tenant control plane")}</CardDescription>
+            <CardDescription>{extractApiErrorMessage(error, "Unable to load the workspace control plane")}</CardDescription>
           </CardHeader>
           <CardContent>
             <Button className="h-11 gap-2" onClick={() => refetch()} disabled={isFetching}>
@@ -787,8 +787,8 @@ export default function SuperAdmin() {
     );
   }
 
-  const activeTenants = businesses.filter((business) => business.active).length;
-  const inactiveAccounts = tenantAccounts.filter((account) => !account.active).length;
+  const activeWorkspaces = businesses.filter((business) => business.active).length;
+  const inactiveAccounts = workspaceAccounts.filter((account) => !account.active).length;
 
   return (
     <div className="mx-auto w-full max-w-7xl space-y-6 p-4 md:p-6 lg:p-8">
@@ -800,34 +800,34 @@ export default function SuperAdmin() {
                 <ShieldCheck className="h-4 w-4" aria-hidden="true" />
                 Platform owner workspace
               </div>
-              <h2 className="text-2xl font-semibold tracking-tight lg:text-3xl">Multi-tenant operations</h2>
+              <h2 className="text-2xl font-semibold tracking-tight lg:text-3xl">Multi-workspace operations</h2>
               <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
-                Monitor tenant health and account access from one control plane. SMTP remains platform-owner infrastructure.
+                Monitor workspace health and account access from one control plane. SMTP remains platform-owner infrastructure.
               </p>
             </div>
-            <Button className="h-11 gap-2" onClick={() => setTenantDialogOpen(true)}>
-              <Plus className="h-4 w-4" />New tenant
+            <Button className="h-11 gap-2" onClick={() => setWorkspaceDialogOpen(true)}>
+              <Plus className="h-4 w-4" />New workspace
             </Button>
           </div>
 
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-            <SummaryCard label="Total tenants" value={businesses.length} detail="All registered organizations" icon={Building2} />
-            <SummaryCard label="Active tenants" value={activeTenants} detail={`${businesses.length - activeTenants} suspended`} icon={CheckCircle2} />
-            <SummaryCard label="Tenant accounts" value={tenantAccounts.length} detail={`${inactiveAccounts} inactive`} icon={Users} />
+            <SummaryCard label="Total workspaces" value={businesses.length} detail="All registered organizations" icon={Building2} />
+            <SummaryCard label="Active workspaces" value={activeWorkspaces} detail={`${businesses.length - activeWorkspaces} suspended`} icon={CheckCircle2} />
+            <SummaryCard label="Workspace accounts" value={workspaceAccounts.length} detail={`${inactiveAccounts} inactive`} icon={Users} />
           </div>
 
           <div className="grid gap-4 lg:grid-cols-[minmax(0,1.5fr)_minmax(18rem,0.75fr)]">
             <Card>
               <CardHeader className="flex-row items-start justify-between gap-4">
                 <div>
-                  <CardTitle>Tenant directory</CardTitle>
+                  <CardTitle>Workspace directory</CardTitle>
                   <CardDescription>Recently created organizations and current status.</CardDescription>
                 </div>
-                <Button variant="outline" className="h-10" onClick={() => navigate("/super-admin/tenants")}>View all</Button>
+                <Button variant="outline" className="h-10" onClick={() => navigate("/super-admin/workspaces")}>View all</Button>
               </CardHeader>
               <CardContent>
                 {businesses.length === 0 ? (
-                  <EmptyTenants onCreate={() => setTenantDialogOpen(true)} />
+                  <EmptyWorkspaces onCreate={() => setWorkspaceDialogOpen(true)} />
                 ) : (
                   <div className="space-y-2">
                     {businesses.slice(0, 6).map((business) => (
@@ -835,7 +835,7 @@ export default function SuperAdmin() {
                         key={business.id}
                         type="button"
                         className="flex min-h-16 w-full items-center justify-between gap-4 rounded-xl border p-3 text-left transition-colors hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                        onClick={() => openTenantEditor(business)}
+                        onClick={() => openWorkspaceEditor(business)}
                       >
                         <div className="min-w-0">
                           <p className="truncate font-medium">{business.name}</p>
@@ -858,7 +858,7 @@ export default function SuperAdmin() {
                 <CardDescription>Configuration and access issues to review.</CardDescription>
               </CardHeader>
               <CardContent className="space-y-3">
-                <AttentionRow label="Suspended tenants" value={businesses.length - activeTenants} onClick={() => navigate("/super-admin/tenants")} />
+                <AttentionRow label="Suspended workspaces" value={businesses.length - activeWorkspaces} onClick={() => navigate("/super-admin/workspaces")} />
                 <AttentionRow label="Inactive accounts" value={inactiveAccounts} onClick={() => navigate("/super-admin/accounts")} />
               </CardContent>
             </Card>
@@ -866,18 +866,18 @@ export default function SuperAdmin() {
         </>
       )}
 
-      {section === "tenants" && (
+      {section === "workspaces" && (
         <>
           <SectionHeading
-            title="Tenant organizations"
-            description="Create organizations, control access, and manage each tenant's operating profile."
-            action={<Button className="h-11 gap-2" onClick={() => setTenantDialogOpen(true)}><Plus className="h-4 w-4" />New tenant</Button>}
+            title="Workspace organizations"
+            description="Create organizations, control access, and manage each workspace's operating profile."
+            action={<Button className="h-11 gap-2" onClick={() => setWorkspaceDialogOpen(true)}><Plus className="h-4 w-4" />New workspace</Button>}
           />
           <Card>
             <CardHeader>
               <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_12rem]">
-                <SearchField value={tenantSearch} onChange={setTenantSearch} placeholder="Search tenant, ID, email, or administrator" />
-                <Select value={tenantStatus} onValueChange={(value) => setTenantStatus(value as TenantStatusFilter)}>
+                <SearchField value={workspaceSearch} onChange={setWorkspaceSearch} placeholder="Search workspace, ID, email, or administrator" />
+                <Select value={workspaceStatus} onValueChange={(value) => setWorkspaceStatus(value as WorkspaceStatusFilter)}>
                   <SelectTrigger className="h-11"><SelectValue placeholder="Status" /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">All statuses</SelectItem>
@@ -889,11 +889,11 @@ export default function SuperAdmin() {
             </CardHeader>
             <CardContent>
               {filteredBusinesses.length === 0 ? (
-                <EmptySearch message={businesses.length ? "No tenants match these filters." : "No tenants have been created."} />
+                <EmptySearch message={businesses.length ? "No workspaces match these filters." : "No workspaces have been created."} />
               ) : (
                 <div className="overflow-x-auto">
                   <Table>
-                    <TableHeader><TableRow><TableHead>Tenant</TableHead><TableHead>Type</TableHead><TableHead>Administrator</TableHead><TableHead>Accounts</TableHead><TableHead>Region</TableHead><TableHead className="text-right">Access</TableHead></TableRow></TableHeader>
+                    <TableHeader><TableRow><TableHead>Workspace</TableHead><TableHead>Type</TableHead><TableHead>Administrator</TableHead><TableHead>Accounts</TableHead><TableHead>Region</TableHead><TableHead className="text-right">Access</TableHead></TableRow></TableHeader>
                     <TableBody>
                       {filteredBusinesses.map((business) => (
                         <TableRow key={business.id}>
@@ -904,8 +904,8 @@ export default function SuperAdmin() {
                           <TableCell><p>{business.currency}</p><p className="text-xs text-muted-foreground">{business.timezone}</p></TableCell>
                           <TableCell>
                             <div className="flex items-center justify-end gap-2">
-                              <Button variant="outline" size="sm" className="h-10 gap-2" onClick={() => openTenantEditor(business)}><Pencil className="h-3.5 w-3.5" />Manage</Button>
-                              <Switch checked={business.active} onCheckedChange={(active) => changeTenantStatus.mutate({ id: business.id, active })} disabled={changeTenantStatus.isPending} aria-label={`${business.active ? "Suspend" : "Activate"} ${business.name}`} />
+                              <Button variant="outline" size="sm" className="h-10 gap-2" onClick={() => openWorkspaceEditor(business)}><Pencil className="h-3.5 w-3.5" />Manage</Button>
+                              <Switch checked={business.active} onCheckedChange={(active) => changeWorkspaceStatus.mutate({ id: business.id, active })} disabled={changeWorkspaceStatus.isPending} aria-label={`${business.active ? "Suspend" : "Activate"} ${business.name}`} />
                             </div>
                           </TableCell>
                         </TableRow>
@@ -942,7 +942,7 @@ export default function SuperAdmin() {
                       totalAccountCount={totalAccountCount}
                       onAddAccount={() => openNewAccountDialog(String(business.id))}
                       onEditAccount={openAccountEditor}
-                      onManageBusiness={() => openTenantEditor(business, "accounts")}
+                      onManageBusiness={() => openWorkspaceEditor(business, "accounts")}
                     />
                   ))}
                 </div>
@@ -952,19 +952,19 @@ export default function SuperAdmin() {
         </>
       )}
 
-      <CreateTenantDialog
-        open={tenantDialogOpen}
-        onOpenChange={setTenantDialogOpen}
-        form={tenantForm}
-        updateForm={updateTenantForm}
+      <CreateWorkspaceDialog
+        open={workspaceDialogOpen}
+        onOpenChange={setWorkspaceDialogOpen}
+        form={workspaceForm}
+        updateForm={updateWorkspaceForm}
         setSlugTouched={setSlugTouched}
-        error={tenantFormError}
-        canCreate={canCreateTenant}
-        pending={createTenant.isPending}
-        onCreate={() => createTenant.mutate()}
+        error={workspaceFormError}
+        canCreate={canCreateWorkspace}
+        pending={createWorkspace.isPending}
+        onCreate={() => createWorkspace.mutate()}
       />
 
-      <ManageTenantDialog
+      <ManageWorkspaceDialog
         business={businessToEdit}
         accounts={managedBusinessAccounts}
         tab={manageTab}
@@ -972,12 +972,12 @@ export default function SuperAdmin() {
         form={editForm}
         updateForm={updateEditForm}
         error={editError}
-        pending={updateTenant.isPending}
+        pending={updateWorkspace.isPending}
         onAddAccount={() => businessToEdit && openNewAccountDialog(String(businessToEdit.id), true)}
         onEditAccount={(account) => openAccountEditor(account, true)}
         onRequestDelete={requestDeleteBusiness}
         onClose={() => setBusinessToEdit(null)}
-        onSave={() => updateTenant.mutate()}
+        onSave={() => updateWorkspace.mutate()}
       />
 
       <AccountDialog
@@ -1034,7 +1034,7 @@ export default function SuperAdmin() {
           <AlertDialogHeader>
             <AlertDialogTitle>Delete {businessToDelete?.name || "this business"}?</AlertDialogTitle>
             <AlertDialogDescription>
-              This permanently deletes the business, its accounts, and its tenant data. This action cannot be undone.
+              This permanently deletes the business, its accounts, and its workspace data. This action cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <div className="space-y-2">
@@ -1091,11 +1091,11 @@ function EmptySearch({ message }: { message: string }) {
   return <div className="rounded-xl border border-dashed p-10 text-center"><Search className="mx-auto mb-3 h-7 w-7 text-muted-foreground" /><p className="text-sm font-medium">{message}</p></div>;
 }
 
-function EmptyTenants({ onCreate }: { onCreate: () => void }) {
-  return <div className="rounded-xl border border-dashed p-10 text-center"><Building2 className="mx-auto mb-3 h-8 w-8 text-muted-foreground" /><p className="font-medium">No tenants yet</p><p className="mt-1 text-sm text-muted-foreground">Create the first organization and administrator account.</p><Button className="mt-4 h-11 gap-2" onClick={onCreate}><Plus className="h-4 w-4" />Create tenant</Button></div>;
+function EmptyWorkspaces({ onCreate }: { onCreate: () => void }) {
+  return <div className="rounded-xl border border-dashed p-10 text-center"><Building2 className="mx-auto mb-3 h-8 w-8 text-muted-foreground" /><p className="font-medium">No workspaces yet</p><p className="mt-1 text-sm text-muted-foreground">Create the first organization and administrator account.</p><Button className="mt-4 h-11 gap-2" onClick={onCreate}><Plus className="h-4 w-4" />Create workspace</Button></div>;
 }
 
-function TenantAccountList({
+function WorkspaceAccountList({
   accounts,
   onEditAccount,
   emptyMessage = "No accounts have been created for this business.",
@@ -1192,38 +1192,38 @@ function BusinessAccountsCard({
         </div>
       </CardHeader>
       <CardContent className="pt-4">
-        <TenantAccountList accounts={accounts} onEditAccount={onEditAccount} />
+        <WorkspaceAccountList accounts={accounts} onEditAccount={onEditAccount} />
       </CardContent>
     </Card>
   );
 }
 
-type TenantForm = typeof EMPTY_TENANT_FORM;
+type WorkspaceForm = typeof EMPTY_TENANT_FORM;
 
-function CreateTenantDialog({ open, onOpenChange, form, updateForm, setSlugTouched, error, canCreate, pending, onCreate }: { open: boolean; onOpenChange: (open: boolean) => void; form: TenantForm; updateForm: (field: keyof TenantForm, value: string) => void; setSlugTouched: (value: boolean) => void; error: string; canCreate: boolean; pending: boolean; onCreate: () => void }) {
+function CreateWorkspaceDialog({ open, onOpenChange, form, updateForm, setSlugTouched, error, canCreate, pending, onCreate }: { open: boolean; onOpenChange: (open: boolean) => void; form: WorkspaceForm; updateForm: (field: keyof WorkspaceForm, value: string) => void; setSlugTouched: (value: boolean) => void; error: string; canCreate: boolean; pending: boolean; onCreate: () => void }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-3xl">
-        <DialogHeader><DialogTitle>Create tenant organization</DialogTitle><DialogDescription>Provision an isolated organization identity and its first business administrator.</DialogDescription></DialogHeader>
+        <DialogHeader><DialogTitle>Create workspace organization</DialogTitle><DialogDescription>Provision an isolated organization identity and its first business administrator.</DialogDescription></DialogHeader>
         <div className="grid gap-5 py-2 sm:grid-cols-2">
-          <div className="space-y-2 sm:col-span-2"><Label htmlFor="tenant-name">Organization name</Label><Input id="tenant-name" className="h-11" value={form.name} onChange={(event) => updateForm("name", event.target.value)} placeholder="Downtown Services" autoFocus /></div>
-          <div className="space-y-2"><Label htmlFor="tenant-slug">Tenant ID</Label><Input id="tenant-slug" className="h-11" value={form.slug} onChange={(event) => { setSlugTouched(true); updateForm("slug", toSlug(event.target.value)); }} placeholder="downtown-services" /><p className="text-xs text-muted-foreground">Permanent lowercase platform identifier.</p></div>
+          <div className="space-y-2 sm:col-span-2"><Label htmlFor="workspace-name">Organization name</Label><Input id="workspace-name" className="h-11" value={form.name} onChange={(event) => updateForm("name", event.target.value)} placeholder="Downtown Services" autoFocus /></div>
+          <div className="space-y-2"><Label htmlFor="workspace-slug">Workspace ID</Label><Input id="workspace-slug" className="h-11" value={form.slug} onChange={(event) => { setSlugTouched(true); updateForm("slug", toSlug(event.target.value)); }} placeholder="downtown-services" /><p className="text-xs text-muted-foreground">Permanent lowercase platform identifier.</p></div>
           <div className="space-y-2"><Label>Business type</Label><Select value={form.businessType} onValueChange={(value) => updateForm("businessType", value)}><SelectTrigger className="h-11"><SelectValue /></SelectTrigger><SelectContent>{BUSINESS_TYPES.map((item) => <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>)}</SelectContent></Select></div>
           <div className="space-y-2"><Label>Timezone</Label><Select value={form.timezone} onValueChange={(value) => updateForm("timezone", value)}><SelectTrigger className="h-11"><SelectValue /></SelectTrigger><SelectContent>{TIMEZONES.map((value) => <SelectItem key={value} value={value}>{value}</SelectItem>)}</SelectContent></Select></div>
           <div className="space-y-2"><Label>Currency</Label><Select value={form.currency} onValueChange={(value) => updateForm("currency", value)}><SelectTrigger className="h-11"><SelectValue /></SelectTrigger><SelectContent>{CURRENCIES.map((value) => <SelectItem key={value} value={value}>{value}</SelectItem>)}</SelectContent></Select></div>
-          <div className="space-y-2"><Label htmlFor="tenant-email">Contact email</Label><Input id="tenant-email" className="h-11" type="email" value={form.contactEmail} onChange={(event) => updateForm("contactEmail", event.target.value)} placeholder="office@example.com" /></div>
-          <div className="space-y-2"><Label htmlFor="tenant-telephone">Telephone</Label><Input id="tenant-telephone" className="h-11" type="tel" value={form.telephone} onChange={(event) => updateForm("telephone", event.target.value)} placeholder="02 123 4567" /></div>
-          <div className="space-y-2"><Label htmlFor="tenant-mobile">Mobile</Label><Input id="tenant-mobile" className="h-11" type="tel" value={form.mobilePhone} onChange={(event) => updateForm("mobilePhone", event.target.value)} placeholder="+971 50 123 4567" /></div>
-          <div className="space-y-2"><Label htmlFor="tenant-website">Website</Label><Input id="tenant-website" className="h-11" type="url" value={form.website} onChange={(event) => updateForm("website", event.target.value)} placeholder="https://example.com" /></div>
-          <div className="space-y-2 sm:col-span-2"><Label htmlFor="tenant-address">Address</Label><Input id="tenant-address" className="h-11" value={form.address} onChange={(event) => updateForm("address", event.target.value)} placeholder="Street, area, city, country" /></div>
-          <TenantLogoUpload id="tenant-logo" value={form.logoUrl} businessName={form.name} onChange={(value) => updateForm("logoUrl", value)} />
-          <div className="border-t pt-5 sm:col-span-2"><h3 className="font-semibold">Initial business administrator</h3><p className="text-xs text-muted-foreground">The account is restricted to this tenant.</p></div>
-          <div className="space-y-2"><Label htmlFor="tenant-admin-name">Administrator name</Label><Input id="tenant-admin-name" className="h-11" value={form.adminName} onChange={(event) => updateForm("adminName", event.target.value)} placeholder="Manager name" /></div>
-          <div className="space-y-2"><Label htmlFor="tenant-admin-username">Login username</Label><Input id="tenant-admin-username" className="h-11" value={form.adminUsername} onChange={(event) => updateForm("adminUsername", event.target.value)} placeholder="tenant.admin" autoComplete="off" /></div>
-          <div className="sm:col-span-2"><PasswordField id="tenant-admin-password" label="Temporary password" value={form.adminPassword} onChange={(value) => updateForm("adminPassword", value)} placeholder="At least 8 characters" helper="Only the platform owner can reset this credential." /></div>
+          <div className="space-y-2"><Label htmlFor="workspace-email">Contact email</Label><Input id="workspace-email" className="h-11" type="email" value={form.contactEmail} onChange={(event) => updateForm("contactEmail", event.target.value)} placeholder="office@example.com" /></div>
+          <div className="space-y-2"><Label htmlFor="workspace-telephone">Telephone</Label><Input id="workspace-telephone" className="h-11" type="tel" value={form.telephone} onChange={(event) => updateForm("telephone", event.target.value)} placeholder="02 123 4567" /></div>
+          <div className="space-y-2"><Label htmlFor="workspace-mobile">Mobile</Label><Input id="workspace-mobile" className="h-11" type="tel" value={form.mobilePhone} onChange={(event) => updateForm("mobilePhone", event.target.value)} placeholder="+971 50 123 4567" /></div>
+          <div className="space-y-2"><Label htmlFor="workspace-website">Website</Label><Input id="workspace-website" className="h-11" type="url" value={form.website} onChange={(event) => updateForm("website", event.target.value)} placeholder="https://example.com" /></div>
+          <div className="space-y-2 sm:col-span-2"><Label htmlFor="workspace-address">Address</Label><Input id="workspace-address" className="h-11" value={form.address} onChange={(event) => updateForm("address", event.target.value)} placeholder="Street, area, city, country" /></div>
+          <WorkspaceLogoUpload id="workspace-logo" value={form.logoUrl} businessName={form.name} onChange={(value) => updateForm("logoUrl", value)} />
+          <div className="border-t pt-5 sm:col-span-2"><h3 className="font-semibold">Initial business administrator</h3><p className="text-xs text-muted-foreground">The account is restricted to this workspace.</p></div>
+          <div className="space-y-2"><Label htmlFor="workspace-admin-name">Administrator name</Label><Input id="workspace-admin-name" className="h-11" value={form.adminName} onChange={(event) => updateForm("adminName", event.target.value)} placeholder="Manager name" /></div>
+          <div className="space-y-2"><Label htmlFor="workspace-admin-username">Login username</Label><Input id="workspace-admin-username" className="h-11" value={form.adminUsername} onChange={(event) => updateForm("adminUsername", event.target.value)} placeholder="workspace.admin" autoComplete="off" /></div>
+          <div className="sm:col-span-2"><PasswordField id="workspace-admin-password" label="Temporary password" value={form.adminPassword} onChange={(value) => updateForm("adminPassword", value)} placeholder="At least 8 characters" helper="Only the platform owner can reset this credential." /></div>
         </div>
         {error && <p className="text-sm text-destructive" role="alert">{error}</p>}
-        <DialogFooter><Button variant="outline" className="h-11" onClick={() => onOpenChange(false)}>Cancel</Button><Button className="h-11" onClick={onCreate} disabled={!canCreate || pending}>{pending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Create tenant</Button></DialogFooter>
+        <DialogFooter><Button variant="outline" className="h-11" onClick={() => onOpenChange(false)}>Cancel</Button><Button className="h-11" onClick={onCreate} disabled={!canCreate || pending}>{pending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Create workspace</Button></DialogFooter>
       </DialogContent>
     </Dialog>
   );
@@ -1231,7 +1231,7 @@ function CreateTenantDialog({ open, onOpenChange, form, updateForm, setSlugTouch
 
 type EditForm = typeof EMPTY_EDIT_FORM;
 
-function ManageTenantDialog({
+function ManageWorkspaceDialog({
   business,
   accounts,
   tab,
@@ -1270,24 +1270,24 @@ function ManageTenantDialog({
   return (
     <Dialog open={Boolean(business)} onOpenChange={(open) => { if (!open) onClose(); }}>
       <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-4xl">
-        <DialogHeader><DialogTitle>Manage {business?.name || "tenant"}</DialogTitle><DialogDescription>Manage the business profile, tenant accounts, and administrator access.</DialogDescription></DialogHeader>
+        <DialogHeader><DialogTitle>Manage {business?.name || "workspace"}</DialogTitle><DialogDescription>Manage the business profile, workspace accounts, and administrator access.</DialogDescription></DialogHeader>
         <Tabs value={tab} onValueChange={(value) => setTab(value as ManageTab)}>
           <TabsList className="grid h-auto w-full grid-cols-3"><TabsTrigger className="min-h-11" value="profile">Profile</TabsTrigger><TabsTrigger className="min-h-11" value="accounts">Accounts</TabsTrigger><TabsTrigger className="min-h-11" value="administrator">Administrator</TabsTrigger></TabsList>
           <TabsContent value="profile" className="grid gap-5 py-4 sm:grid-cols-2">
-            <div className="space-y-2 sm:col-span-2"><Label htmlFor="edit-tenant-name">Organization name</Label><Input id="edit-tenant-name" className="h-11" value={form.name} onChange={(event) => updateForm("name", event.target.value)} /></div>
+            <div className="space-y-2 sm:col-span-2"><Label htmlFor="edit-workspace-name">Organization name</Label><Input id="edit-workspace-name" className="h-11" value={form.name} onChange={(event) => updateForm("name", event.target.value)} /></div>
             <div className="space-y-2"><Label>Business type</Label><Select value={form.businessType} onValueChange={(value) => updateForm("businessType", value)}><SelectTrigger className="h-11"><SelectValue /></SelectTrigger><SelectContent>{BUSINESS_TYPES.map((item) => <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>)}</SelectContent></Select></div>
             <div className="space-y-2"><Label>Currency</Label><Select value={form.currency} onValueChange={(value) => updateForm("currency", value)}><SelectTrigger className="h-11"><SelectValue /></SelectTrigger><SelectContent>{CURRENCIES.map((value) => <SelectItem key={value} value={value}>{value}</SelectItem>)}</SelectContent></Select></div>
             <div className="space-y-2"><Label>Timezone</Label><Select value={form.timezone} onValueChange={(value) => updateForm("timezone", value)}><SelectTrigger className="h-11"><SelectValue /></SelectTrigger><SelectContent>{TIMEZONES.map((value) => <SelectItem key={value} value={value}>{value}</SelectItem>)}</SelectContent></Select></div>
-            <div className="space-y-2"><Label htmlFor="edit-tenant-telephone">Telephone</Label><Input id="edit-tenant-telephone" className="h-11" type="tel" value={form.telephone} onChange={(event) => updateForm("telephone", event.target.value)} /></div>
-            <div className="space-y-2"><Label htmlFor="edit-tenant-mobile">Mobile</Label><Input id="edit-tenant-mobile" className="h-11" type="tel" value={form.mobilePhone} onChange={(event) => updateForm("mobilePhone", event.target.value)} /></div>
-            <div className="space-y-2"><Label htmlFor="edit-tenant-email">Contact email</Label><Input id="edit-tenant-email" className="h-11" type="email" value={form.contactEmail} onChange={(event) => updateForm("contactEmail", event.target.value)} /></div>
-            <div className="space-y-2"><Label htmlFor="edit-tenant-website">Website</Label><Input id="edit-tenant-website" className="h-11" type="url" value={form.website} onChange={(event) => updateForm("website", event.target.value)} /></div>
-            <div className="space-y-2 sm:col-span-2"><Label htmlFor="edit-tenant-address">Address</Label><Input id="edit-tenant-address" className="h-11" value={form.address} onChange={(event) => updateForm("address", event.target.value)} /></div>
-            <TenantLogoUpload id="edit-tenant-logo" value={form.logoUrl} businessName={form.name} onChange={(value) => updateForm("logoUrl", value)} />
+            <div className="space-y-2"><Label htmlFor="edit-workspace-telephone">Telephone</Label><Input id="edit-workspace-telephone" className="h-11" type="tel" value={form.telephone} onChange={(event) => updateForm("telephone", event.target.value)} /></div>
+            <div className="space-y-2"><Label htmlFor="edit-workspace-mobile">Mobile</Label><Input id="edit-workspace-mobile" className="h-11" type="tel" value={form.mobilePhone} onChange={(event) => updateForm("mobilePhone", event.target.value)} /></div>
+            <div className="space-y-2"><Label htmlFor="edit-workspace-email">Contact email</Label><Input id="edit-workspace-email" className="h-11" type="email" value={form.contactEmail} onChange={(event) => updateForm("contactEmail", event.target.value)} /></div>
+            <div className="space-y-2"><Label htmlFor="edit-workspace-website">Website</Label><Input id="edit-workspace-website" className="h-11" type="url" value={form.website} onChange={(event) => updateForm("website", event.target.value)} /></div>
+            <div className="space-y-2 sm:col-span-2"><Label htmlFor="edit-workspace-address">Address</Label><Input id="edit-workspace-address" className="h-11" value={form.address} onChange={(event) => updateForm("address", event.target.value)} /></div>
+            <WorkspaceLogoUpload id="edit-workspace-logo" value={form.logoUrl} businessName={form.name} onChange={(value) => updateForm("logoUrl", value)} />
             <div className="flex flex-col gap-3 rounded-lg border border-destructive/30 bg-destructive/5 p-4 sm:col-span-2 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <p className="font-semibold text-destructive">Delete business</p>
-                <p className="text-sm text-muted-foreground">Permanently remove this business and all tenant-scoped accounts and data.</p>
+                <p className="text-sm text-muted-foreground">Permanently remove this business and all workspace-scoped accounts and data.</p>
               </div>
               <Button type="button" variant="destructive" className="h-11 shrink-0 gap-2" onClick={onRequestDelete}>
                 <Trash2 className="h-4 w-4" aria-hidden="true" />Delete business
@@ -1304,7 +1304,7 @@ function ManageTenantDialog({
                 <UserPlus className="h-4 w-4" aria-hidden="true" />Add account
               </Button>
             </div>
-            <TenantAccountList accounts={accounts} onEditAccount={onEditAccount} />
+            <WorkspaceAccountList accounts={accounts} onEditAccount={onEditAccount} />
           </TabsContent>
           <TabsContent value="administrator" className="grid gap-5 py-4 sm:grid-cols-2">
             <div className="rounded-lg border border-primary/20 bg-primary/5 p-3 text-sm sm:col-span-2">Business administrators cannot change these credentials themselves. Saving changes signs the account out.</div>
@@ -1330,13 +1330,13 @@ function AccountDialog({ open, account, businessLocked, businesses, form, setFor
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-xl">
-        <DialogHeader><DialogTitle>{account ? "Manage tenant account" : "Create tenant account"}</DialogTitle><DialogDescription>{account ? "Update role, credentials, or account access. Saving signs this user out." : "Provision a user inside one tenant organization."}</DialogDescription></DialogHeader>
+        <DialogHeader><DialogTitle>{account ? "Manage workspace account" : "Create workspace account"}</DialogTitle><DialogDescription>{account ? "Update role, credentials, or account access. Saving signs this user out." : "Provision a user inside one workspace organization."}</DialogDescription></DialogHeader>
         <div className="grid gap-5 py-2 sm:grid-cols-2">
-          <div className="space-y-2 sm:col-span-2"><Label>Tenant organization</Label><Select value={form.businessId} onValueChange={(value) => update("businessId", value)} disabled={Boolean(account) || businessLocked}><SelectTrigger className="h-11"><SelectValue placeholder="Choose a tenant" /></SelectTrigger><SelectContent>{businesses.map((business) => <SelectItem key={business.id} value={String(business.id)}>{business.name}</SelectItem>)}</SelectContent></Select></div>
+          <div className="space-y-2 sm:col-span-2"><Label>Workspace organization</Label><Select value={form.businessId} onValueChange={(value) => update("businessId", value)} disabled={Boolean(account) || businessLocked}><SelectTrigger className="h-11"><SelectValue placeholder="Choose a workspace" /></SelectTrigger><SelectContent>{businesses.map((business) => <SelectItem key={business.id} value={String(business.id)}>{business.name}</SelectItem>)}</SelectContent></Select></div>
           <div className="space-y-2"><Label htmlFor="account-name">Display name</Label><Input id="account-name" className="h-11" value={form.name} onChange={(event) => update("name", event.target.value)} /></div>
           <div className="space-y-2"><Label htmlFor="account-username">Login username</Label><Input id="account-username" className="h-11" value={form.username} onChange={(event) => update("username", event.target.value)} autoComplete="off" /></div>
           <div className="space-y-2"><Label htmlFor="account-email">Email</Label><Input id="account-email" className="h-11" type="email" value={form.email} onChange={(event) => update("email", event.target.value)} /></div>
-          <div className="space-y-2"><Label>Tenant role</Label><Select value={form.role} onValueChange={(value) => update("role", value)}><SelectTrigger className="h-11"><SelectValue /></SelectTrigger><SelectContent>{ACCOUNT_ROLES.map((role) => <SelectItem key={role.value} value={role.value}>{role.label}</SelectItem>)}</SelectContent></Select></div>
+          <div className="space-y-2"><Label>Workspace role</Label><Select value={form.role} onValueChange={(value) => update("role", value)}><SelectTrigger className="h-11"><SelectValue /></SelectTrigger><SelectContent>{ACCOUNT_ROLES.map((role) => <SelectItem key={role.value} value={role.value}>{role.label}</SelectItem>)}</SelectContent></Select></div>
           <div className="sm:col-span-2"><PasswordField id="account-password" label={account ? "New password" : "Temporary password"} value={form.password} onChange={(value) => update("password", value)} placeholder={account ? "Leave blank to keep the current password" : "At least 8 characters"} /></div>
           <div className="flex min-h-14 items-center justify-between rounded-lg border p-3 sm:col-span-2"><div><Label htmlFor="account-active">Account access</Label><p className="text-xs text-muted-foreground">Inactive users cannot sign in.</p></div><Switch id="account-active" checked={form.active} onCheckedChange={(checked) => update("active", checked)} /></div>
         </div>

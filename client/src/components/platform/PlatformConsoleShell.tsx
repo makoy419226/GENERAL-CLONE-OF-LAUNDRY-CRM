@@ -19,7 +19,7 @@ type PlatformConsoleShellProps = {
 
 const navigation = [
   { href: "/super-admin", label: "Overview", icon: LayoutDashboard },
-  { href: "/super-admin/tenants", label: "Tenants", icon: Building2 },
+  { href: "/super-admin/workspaces", label: "Workspaces", icon: Building2 },
   { href: "/super-admin/accounts", label: "Accounts", icon: Users },
 ];
 
@@ -56,7 +56,7 @@ export function PlatformConsoleShell({
               </div>
               <div>
                 <p className="font-semibold leading-tight">Platform Console</p>
-                <p className="text-xs text-slate-400">Multi-tenant control plane</p>
+                <p className="text-xs text-slate-400">Multi-workspace control plane</p>
               </div>
             </div>
           </div>

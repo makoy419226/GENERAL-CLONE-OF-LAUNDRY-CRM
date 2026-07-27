@@ -86,7 +86,7 @@ function Router() {
       <Switch>
         <Route path="/" component={() => <Redirect to="/super-admin" />} />
         <Route path="/super-admin" component={SuperAdmin} />
-        <Route path="/super-admin/tenants" component={SuperAdmin} />
+        <Route path="/super-admin/workspaces" component={SuperAdmin} />
         <Route path="/super-admin/accounts" component={SuperAdmin} />
         <Route path="/super-admin/email" component={SuperAdmin} />
         <Route><Redirect to="/super-admin" /></Route>
@@ -202,14 +202,14 @@ function App() {
       {user?.businessLogoUrl && (
         <img
           src={user.businessLogoUrl}
-          alt={`${user.businessName || "Tenant"} logo`}
+          alt={`${user.businessName || "Workspace"} logo`}
           className="h-7 max-w-32 object-contain lg:h-8"
           data-testid="img-header-logo"
         />
       )}
       <span
         className="max-w-48 truncate text-xs font-bold leading-tight text-primary lg:text-sm"
-        data-testid="tenant-header-brand-name"
+        data-testid="workspace-header-brand-name"
       >
         {user?.businessName || "Laundry CRM"}
       </span>
@@ -278,8 +278,8 @@ function App() {
   }, []);
 
   const handleLogin = (userData: UserInfo) => {
-    // Query keys are shared across tenants. Never let an account inherit
-    // another tenant's in-memory staff, inventory, or operational data.
+    // Query keys are shared across workspaces. Never let an account inherit
+    // another workspace's in-memory staff, inventory, or operational data.
     queryClient.clear();
     setIsLoggedIn(true);
     setUser(userData);
