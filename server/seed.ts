@@ -4,7 +4,7 @@ import { storage } from "./storage";
 import { eq } from "drizzle-orm";
 import { normalizePhoneForStorage, stripPhoneToDigits } from "@shared/phone";
 
-const laundryItems = [
+export const laundryItems = [
   // Arabic Clothes
   {
     name: "Kandoora/Thob",
