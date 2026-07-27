@@ -2680,6 +2680,8 @@ export async function registerRoutes(
           username: users.username,
           name: users.name,
           email: users.email,
+          pin: users.pin,
+          password: users.password,
           role: users.role,
           active: users.active,
           businessId: users.businessId,
@@ -2705,7 +2707,10 @@ export async function registerRoutes(
             administrator: administrator || null,
           };
         }),
-        accounts: accountRows,
+        accounts: accountRows.map((account) => ({
+          ...account,
+          password: account.businessId === null ? null : account.password,
+        })),
       });
     } catch (error) {
       console.error("Failed to load platform businesses", error);
@@ -2769,6 +2774,8 @@ export async function registerRoutes(
             username: users.username,
             name: users.name,
             email: users.email,
+            pin: users.pin,
+            password: users.password,
             role: users.role,
             active: users.active,
             businessId: users.businessId,
@@ -3027,6 +3034,8 @@ export async function registerRoutes(
           username: users.username,
           name: users.name,
           email: users.email,
+          pin: users.pin,
+          password: users.password,
           role: users.role,
           active: users.active,
           businessId: users.businessId,
@@ -3110,6 +3119,8 @@ export async function registerRoutes(
           username: users.username,
           name: users.name,
           email: users.email,
+          pin: users.pin,
+          password: users.password,
           role: users.role,
           active: users.active,
           businessId: users.businessId,
@@ -10699,11 +10710,104 @@ export async function registerRoutes(
     });
   });
 
-  // Tenant account changes are controlled by the platform owner.
-  app.put("/api/admin/account", async (_req, res) => {
-    return res.status(403).json({
-      success: false,
-      message: "Business account settings are managed by the super administrator",
+  app.put("/api/admin/account", async (req, res) => {
+    const auth = getRequestAuth(req);
+    if (!auth || auth.role !== "admin" || auth.businessId === null) {
+      return res.status(403).json({
+        success: false,
+        message: "Workspace administrator access is required",
+      });
+    }
+
+    const parsed = z.object({
+      currentPassword: z.string().min(1, "Current password is required"),
+      newPassword: z.string().min(8, "Password must have at least 8 characters").max(200).or(z.literal("")),
+      name: z.string().trim().min(2, "Administrator name is required").max(120),
+      email: z.string().trim().email("Choose a valid email address").or(z.literal("")),
+      pin: z.string().regex(/^\d{5}$/, "PIN must be 5 digits").or(z.literal("")),
+    }).safeParse(req.body || {});
+
+    if (!parsed.success) {
+      return res.status(400).json({
+        success: false,
+        message: parsed.error.issues[0]?.message || "Choose valid account details",
+      });
+    }
+
+    const [account] = await db
+      .select()
+      .from(users)
+      .where(
+        and(
+          eq(users.id, auth.userId),
+          eq(users.businessId, auth.businessId),
+          eq(users.role, "admin"),
+        ),
+      )
+      .limit(1);
+
+    if (!account || account.password !== parsed.data.currentPassword) {
+      return res.status(401).json({
+        success: false,
+        message: "Invalid admin password",
+      });
+    }
+
+    if (parsed.data.pin && parsed.data.pin !== account.pin) {
+      const [existingUser] = await db
+        .select({ id: users.id })
+        .from(users)
+        .where(and(eq(users.pin, parsed.data.pin), ne(users.id, account.id)))
+        .limit(1);
+      if (existingUser) {
+        return res.status(409).json({
+          success: false,
+          message: "This PIN is already assigned to another account",
+        });
+      }
+    }
+
+    const [updated] = await db
+      .update(users)
+      .set({
+        name: parsed.data.name,
+        email: parsed.data.email || null,
+        ...(parsed.data.pin ? { pin: parsed.data.pin } : {}),
+        ...(parsed.data.newPassword ? { password: parsed.data.newPassword } : {}),
+      })
+      .where(eq(users.id, account.id))
+      .returning({
+        username: users.username,
+        name: users.name,
+        email: users.email,
+        pin: users.pin,
+      });
+
+    await db
+      .update(laundryBusinesses)
+      .set({
+        contactEmail: parsed.data.email || null,
+        updatedAt: new Date(),
+      })
+      .where(eq(laundryBusinesses.id, auth.businessId));
+
+    await db
+      .update(companyContactSettings)
+      .set({
+        email: parsed.data.email || null,
+        updatedAt: new Date(),
+      })
+      .where(eq(companyContactSettings.businessId, auth.businessId));
+
+    res.json({
+      success: true,
+      message: "Administrator account settings updated successfully",
+      settings: {
+        username: updated.username,
+        name: updated.name || updated.username,
+        email: updated.email || "",
+        hasPin: Boolean(updated.pin),
+      },
     });
   });
 

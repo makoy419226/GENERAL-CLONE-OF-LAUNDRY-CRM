@@ -532,6 +532,7 @@ export default function AdminSettings() {
   const [editName, setEditName] = useState("");
   const [editEmail, setEditEmail] = useState("");
   const [editPin, setEditPin] = useState("");
+  const [editNewPassword, setEditNewPassword] = useState("");
   const [editPassword, setEditPassword] = useState("");
   const [accountError, setAccountError] = useState("");
   
@@ -1183,7 +1184,7 @@ export default function AdminSettings() {
 
   // Update admin account mutation
   const updateAccountMutation = useMutation({
-    mutationFn: async (data: { currentPassword: string; name: string; email: string; pin: string }) => {
+    mutationFn: async (data: { currentPassword: string; newPassword: string; name: string; email: string; pin: string }) => {
       const res = await apiRequest("PUT", "/api/admin/account", data);
       return res.json();
     },
@@ -1279,6 +1280,7 @@ export default function AdminSettings() {
       setEditName(adminDisplayName || adminAccount.name || adminAccount.username || "");
       setEditEmail(adminAccount.email);
       setEditPin("");
+      setEditNewPassword("");
       setEditPassword("");
       setAccountError("");
     }
@@ -1363,15 +1365,6 @@ export default function AdminSettings() {
                   <Pencil className="w-4 h-4" />
                   Edit Account Details
                 </Button>
-                <Button
-                  variant="outline"
-                  className="gap-2"
-                  onClick={handleChangePasswordOpen}
-                  data-testid="button-change-admin-password"
-                >
-                  <Lock className="w-4 h-4" />
-                  Change Password (OTP)
-                </Button>
               </div>
             </div>
 
@@ -1379,6 +1372,7 @@ export default function AdminSettings() {
             <Dialog open={showEditAccountDialog} onOpenChange={(open) => {
               setShowEditAccountDialog(open);
               if (!open) {
+                setEditNewPassword("");
                 setEditPassword("");
                 setAccountError("");
               }
@@ -1443,6 +1437,20 @@ export default function AdminSettings() {
                       data-testid="input-edit-admin-pin"
                     />
                   </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="edit-new-password">New Password</Label>
+                    <Input
+                      id="edit-new-password"
+                      type="password"
+                      placeholder="Leave empty to keep the current password"
+                      value={editNewPassword}
+                      onChange={(e) => setEditNewPassword(e.target.value)}
+                      data-testid="input-edit-admin-new-password"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Use at least 8 characters when changing the password.
+                    </p>
+                  </div>
                   <div className="space-y-2 pt-2 border-t">
                     <Label htmlFor="edit-password">Current Password (required)</Label>
                     <Input
@@ -1475,6 +1483,7 @@ export default function AdminSettings() {
                   <Button
                     onClick={() => updateAccountMutation.mutate({
                       currentPassword: editPassword,
+                      newPassword: editNewPassword,
                       name: editName,
                       email: editEmail,
                       pin: editPin

@@ -62,6 +62,8 @@ type PlatformAccount = {
   username: string;
   name: string | null;
   email: string | null;
+  pin: string | null;
+  password: string | null;
   role: string;
   active: boolean | null;
   businessId: number | null;
@@ -162,6 +164,7 @@ const EMPTY_ACCOUNT_FORM = {
   name: "",
   username: "",
   email: "",
+  pin: "",
   role: "counter",
   password: "",
   active: true,
@@ -386,6 +389,8 @@ export default function SuperAdmin() {
 
   const { data, isLoading, error, refetch, isFetching } = useQuery<PlatformOverview>({
     queryKey: ["/api/super-admin/businesses"],
+    refetchInterval: 15000,
+    refetchOnWindowFocus: true,
   });
 
   const businesses = data?.businesses || [];
@@ -661,7 +666,7 @@ export default function SuperAdmin() {
       logoUrl: business.logoUrl || "",
       adminName: business.administrator?.name || "",
       adminUsername: business.administrator?.username || "",
-      adminPassword: "",
+      adminPassword: business.administrator?.password || "",
     });
   };
 
@@ -689,8 +694,9 @@ export default function SuperAdmin() {
       name: account.name || "",
       username: account.username,
       email: account.email || "",
+      pin: account.pin || "",
       role: account.role,
-      password: "",
+      password: account.password || "",
       active: Boolean(account.active),
     });
     setAccountError("");
@@ -1307,10 +1313,14 @@ function ManageWorkspaceDialog({
             <WorkspaceAccountList accounts={accounts} onEditAccount={onEditAccount} />
           </TabsContent>
           <TabsContent value="administrator" className="grid gap-5 py-4 sm:grid-cols-2">
-            <div className="rounded-lg border border-primary/20 bg-primary/5 p-3 text-sm sm:col-span-2">Business administrators cannot change these credentials themselves. Saving changes signs the account out.</div>
+            <div className="rounded-lg border border-primary/20 bg-primary/5 p-3 text-sm sm:col-span-2">Workspace administrators can update their own name, email, PIN, and password. Changes made here update the same account record.</div>
             <div className="space-y-2"><Label htmlFor="edit-admin-name">Administrator name</Label><Input id="edit-admin-name" className="h-11" value={form.adminName} onChange={(event) => updateForm("adminName", event.target.value)} /></div>
             <div className="space-y-2"><Label htmlFor="edit-admin-username">Login username</Label><Input id="edit-admin-username" className="h-11" value={form.adminUsername} onChange={(event) => updateForm("adminUsername", event.target.value)} autoComplete="off" /></div>
-            <div className="sm:col-span-2"><PasswordField id="edit-admin-password" label="New password" value={form.adminPassword} onChange={(value) => updateForm("adminPassword", value)} placeholder="Leave blank to keep the current password" helper="Use at least 8 characters when resetting the password." /></div>
+            <div className="space-y-2 sm:col-span-2">
+              <Label htmlFor="edit-admin-pin">Administrator PIN</Label>
+              <Input id="edit-admin-pin" className="h-11 font-mono tracking-widest" value={business?.administrator?.pin || "Not assigned"} readOnly />
+            </div>
+            <div className="sm:col-span-2"><PasswordField id="edit-admin-password" label="Administrator password" value={form.adminPassword} onChange={(value) => updateForm("adminPassword", value)} placeholder="At least 8 characters" helper="Use the eye button to view the saved password or enter a replacement." /></div>
           </TabsContent>
         </Tabs>
         {error && <p className="text-sm text-destructive" role="alert">{error}</p>}
@@ -1337,7 +1347,14 @@ function AccountDialog({ open, account, businessLocked, businesses, form, setFor
           <div className="space-y-2"><Label htmlFor="account-username">Login username</Label><Input id="account-username" className="h-11" value={form.username} onChange={(event) => update("username", event.target.value)} autoComplete="off" /></div>
           <div className="space-y-2"><Label htmlFor="account-email">Email</Label><Input id="account-email" className="h-11" type="email" value={form.email} onChange={(event) => update("email", event.target.value)} /></div>
           <div className="space-y-2"><Label>Workspace role</Label><Select value={form.role} onValueChange={(value) => update("role", value)}><SelectTrigger className="h-11"><SelectValue /></SelectTrigger><SelectContent>{ACCOUNT_ROLES.map((role) => <SelectItem key={role.value} value={role.value}>{role.label}</SelectItem>)}</SelectContent></Select></div>
-          <div className="sm:col-span-2"><PasswordField id="account-password" label={account ? "New password" : "Temporary password"} value={form.password} onChange={(value) => update("password", value)} placeholder={account ? "Leave blank to keep the current password" : "At least 8 characters"} /></div>
+          {account && (
+            <div className="space-y-2 sm:col-span-2">
+              <Label htmlFor="account-pin">Account PIN</Label>
+              <Input id="account-pin" className="h-11 font-mono tracking-widest" value={form.pin || "Not assigned"} readOnly />
+              <p className="text-xs text-muted-foreground">This PIN is assigned to the workspace account and can be used for authorized operations.</p>
+            </div>
+          )}
+          <div className="sm:col-span-2"><PasswordField id="account-password" label={account ? "Account password" : "Temporary password"} value={form.password} onChange={(value) => update("password", value)} placeholder="At least 8 characters" helper={account ? "Use the eye button to view the saved password or enter a replacement." : undefined} /></div>
           <div className="flex min-h-14 items-center justify-between rounded-lg border p-3 sm:col-span-2"><div><Label htmlFor="account-active">Account access</Label><p className="text-xs text-muted-foreground">Inactive users cannot sign in.</p></div><Switch id="account-active" checked={form.active} onCheckedChange={(checked) => update("active", checked)} /></div>
         </div>
         {error && <p className="text-sm text-destructive" role="alert">{error}</p>}

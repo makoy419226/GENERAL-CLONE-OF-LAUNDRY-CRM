@@ -3400,6 +3400,32 @@ export class DatabaseStorage implements IStorage {
       })
       .where(eq(companyContactSettings.id, existing.id))
       .returning();
+
+    const businessId = currentTenantBusinessId();
+    if (businessId) {
+      const workspaceUpdates: Partial<typeof laundryBusinesses.$inferInsert> = {
+        updatedAt: new Date(),
+      };
+
+      if ("companyName" in updates && updates.companyName?.trim()) {
+        workspaceUpdates.name = updates.companyName.trim();
+      }
+      if ("email" in updates) {
+        workspaceUpdates.contactEmail = updates.email?.trim() || null;
+      }
+      if ("mobilePhone" in updates || "telephone" in updates) {
+        workspaceUpdates.phone =
+          updates.mobilePhone?.trim() ||
+          updates.telephone?.trim() ||
+          null;
+      }
+
+      await db
+        .update(laundryBusinesses)
+        .set(workspaceUpdates)
+        .where(eq(laundryBusinesses.id, businessId));
+    }
+
     return updated;
   }
 
