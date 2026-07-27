@@ -529,6 +529,7 @@ export default function AdminSettings() {
   const [showEditAccountDialog, setShowEditAccountDialog] = useState(false);
   const [showChangePasswordDialog, setShowChangePasswordDialog] = useState(false);
   const [adminDisplayName, setAdminDisplayName] = useState("");
+  const [editUsername, setEditUsername] = useState("");
   const [editName, setEditName] = useState("");
   const [editEmail, setEditEmail] = useState("");
   const [editPin, setEditPin] = useState("");
@@ -1184,7 +1185,7 @@ export default function AdminSettings() {
 
   // Update admin account mutation
   const updateAccountMutation = useMutation({
-    mutationFn: async (data: { currentPassword: string; newPassword: string; name: string; email: string; pin: string }) => {
+    mutationFn: async (data: { currentPassword: string; newPassword: string; username: string; name: string; email: string; pin: string }) => {
       const res = await apiRequest("PUT", "/api/admin/account", data);
       return res.json();
     },
@@ -1195,7 +1196,7 @@ export default function AdminSettings() {
         (current:
           | { username: string; name: string; email: string; pin: string; password: string; hasPin: boolean }
           | undefined) => ({
-          username: data?.settings?.username || current?.username || "",
+          username: data?.settings?.username || variables.username.trim(),
           name: data?.settings?.name || variables.name.trim(),
           email: data?.settings?.email ?? variables.email,
           pin: variables.pin ? variables.pin : (current?.pin || ""),
@@ -1203,20 +1204,30 @@ export default function AdminSettings() {
           hasPin: variables.pin ? true : (data?.settings?.hasPin ?? current?.hasPin ?? false),
         }),
       );
+      if (data?.token) {
+        localStorage.setItem("authToken", data.token);
+      }
       queryClient.invalidateQueries({ queryKey: ["/api/admin/account"] });
       const storedUser = localStorage.getItem("user");
       if (storedUser) {
         try {
           const parsedUser = JSON.parse(storedUser);
           if (parsedUser?.role === "admin") {
-            localStorage.setItem("user", JSON.stringify({ ...parsedUser, name: variables.name.trim() }));
+            localStorage.setItem("user", JSON.stringify({
+              ...parsedUser,
+              username: data?.settings?.username || variables.username.trim(),
+              name: variables.name.trim(),
+              email: variables.email.trim(),
+            }));
           }
         } catch {
           // Ignore malformed local session data.
         }
       }
       setShowEditAccountDialog(false);
+      setEditUsername("");
       setEditName("");
+      setEditNewPassword("");
       setEditPassword("");
       setAccountError("");
       toast({
@@ -1225,7 +1236,7 @@ export default function AdminSettings() {
       });
     },
     onError: (error: any) => {
-      setAccountError(error.message?.includes("Invalid") ? "Invalid admin password" : "Failed to update account");
+      setAccountError(extractApiErrorMessage(error, "Failed to update account"));
     },
   });
 
@@ -1277,6 +1288,7 @@ export default function AdminSettings() {
 
   const handleEditAccountOpen = () => {
     if (adminAccount) {
+      setEditUsername(adminAccount.username || "");
       setEditName(adminDisplayName || adminAccount.name || adminAccount.username || "");
       setEditEmail(adminAccount.email);
       setEditPin("");
@@ -1319,7 +1331,7 @@ export default function AdminSettings() {
               Admin Account
             </CardTitle>
             <CardDescription>
-              View your assigned business administrator account.
+              View and edit your assigned workspace administrator account.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -1349,13 +1361,8 @@ export default function AdminSettings() {
                 </div>
               </div>
 
-              <div className="rounded-lg border border-primary/20 bg-primary/5 p-4 text-sm">
-                <p className="font-semibold text-foreground">Managed from the Console</p>
-                <p className="mt-1 text-muted-foreground">Username, password, and SMTP settings can only be changed from the platform-owner dashboard.</p>
-              </div>
-
               {/* Action Buttons */}
-              <div className="hidden flex-wrap gap-2">
+              <div className="flex flex-wrap gap-2">
                 <Button
                   variant="outline"
                   className="gap-2"
@@ -1389,16 +1396,16 @@ export default function AdminSettings() {
                 </DialogHeader>
                 <div className="space-y-4 py-4">
                   <div className="space-y-2">
-                    <Label htmlFor="fixed-username">Username</Label>
+                    <Label htmlFor="edit-username">Username</Label>
                     <Input
-                      id="fixed-username"
-                      value={adminAccount?.username || ""}
-                      disabled
-                      className="bg-muted"
-                      data-testid="input-fixed-admin-username"
+                      id="edit-username"
+                      value={editUsername}
+                      onChange={(e) => setEditUsername(e.target.value)}
+                      autoComplete="off"
+                      data-testid="input-edit-admin-username"
                     />
                     <p className="text-xs text-muted-foreground">
-                      The admin username is fixed and cannot be changed.
+                      Use at least 3 letters, numbers, periods, underscores, or hyphens.
                     </p>
                   </div>
                   <div className="space-y-2">
@@ -1484,11 +1491,12 @@ export default function AdminSettings() {
                     onClick={() => updateAccountMutation.mutate({
                       currentPassword: editPassword,
                       newPassword: editNewPassword,
+                      username: editUsername,
                       name: editName,
                       email: editEmail,
                       pin: editPin
                     })}
-                    disabled={!editPassword || !editName.trim() || updateAccountMutation.isPending}
+                    disabled={!editPassword || editUsername.trim().length < 3 || !editName.trim() || (editNewPassword.length > 0 && editNewPassword.length < 8) || updateAccountMutation.isPending}
                     data-testid="button-save-admin-account"
                   >
                     {updateAccountMutation.isPending ? (

@@ -144,6 +144,7 @@ const EMPTY_TENANT_FORM = {
 
 const EMPTY_EDIT_FORM = {
   name: "",
+  slug: "",
   businessType: "laundry",
   timezone: "Asia/Dubai",
   currency: "AED",
@@ -537,6 +538,7 @@ export default function SuperAdmin() {
             name: accountForm.name,
             username: accountForm.username,
             email: accountForm.email,
+            pin: accountForm.pin,
             role: accountForm.role,
             password: accountForm.password,
             active: accountForm.active,
@@ -553,6 +555,7 @@ export default function SuperAdmin() {
           name: accountForm.name,
           username: accountForm.username,
           email: accountForm.email,
+          pin: accountForm.pin,
           role: accountForm.role,
           password: accountForm.password,
           active: accountForm.active,
@@ -654,6 +657,7 @@ export default function SuperAdmin() {
     setEditError("");
     setEditForm({
       name: business.name,
+      slug: business.slug,
       businessType: business.businessType || "laundry",
       timezone: business.timezone || "Asia/Dubai",
       currency: business.currency || "AED",
@@ -1268,6 +1272,7 @@ function ManageWorkspaceDialog({
 }) {
   const canSave =
     form.name.trim().length >= 2 &&
+    form.slug.trim().length >= 2 &&
     (tab !== "administrator" ||
       (Boolean(business?.administrator?.id) &&
         form.adminName.trim().length >= 2 &&
@@ -1281,6 +1286,7 @@ function ManageWorkspaceDialog({
           <TabsList className="grid h-auto w-full grid-cols-3"><TabsTrigger className="min-h-11" value="profile">Profile</TabsTrigger><TabsTrigger className="min-h-11" value="accounts">Accounts</TabsTrigger><TabsTrigger className="min-h-11" value="administrator">Administrator</TabsTrigger></TabsList>
           <TabsContent value="profile" className="grid gap-5 py-4 sm:grid-cols-2">
             <div className="space-y-2 sm:col-span-2"><Label htmlFor="edit-workspace-name">Organization name</Label><Input id="edit-workspace-name" className="h-11" value={form.name} onChange={(event) => updateForm("name", event.target.value)} /></div>
+            <div className="space-y-2 sm:col-span-2"><Label htmlFor="edit-workspace-slug">Workspace ID</Label><Input id="edit-workspace-slug" className="h-11" value={form.slug} onChange={(event) => updateForm("slug", toSlug(event.target.value))} /><p className="text-xs text-muted-foreground">Unique lowercase platform identifier.</p></div>
             <div className="space-y-2"><Label>Business type</Label><Select value={form.businessType} onValueChange={(value) => updateForm("businessType", value)}><SelectTrigger className="h-11"><SelectValue /></SelectTrigger><SelectContent>{BUSINESS_TYPES.map((item) => <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>)}</SelectContent></Select></div>
             <div className="space-y-2"><Label>Currency</Label><Select value={form.currency} onValueChange={(value) => updateForm("currency", value)}><SelectTrigger className="h-11"><SelectValue /></SelectTrigger><SelectContent>{CURRENCIES.map((value) => <SelectItem key={value} value={value}>{value}</SelectItem>)}</SelectContent></Select></div>
             <div className="space-y-2"><Label>Timezone</Label><Select value={form.timezone} onValueChange={(value) => updateForm("timezone", value)}><SelectTrigger className="h-11"><SelectValue /></SelectTrigger><SelectContent>{TIMEZONES.map((value) => <SelectItem key={value} value={value}>{value}</SelectItem>)}</SelectContent></Select></div>
@@ -1350,8 +1356,8 @@ function AccountDialog({ open, account, businessLocked, businesses, form, setFor
           {account && (
             <div className="space-y-2 sm:col-span-2">
               <Label htmlFor="account-pin">Account PIN</Label>
-              <Input id="account-pin" className="h-11 font-mono tracking-widest" value={form.pin || "Not assigned"} readOnly />
-              <p className="text-xs text-muted-foreground">This PIN is assigned to the workspace account and can be used for authorized operations.</p>
+              <Input id="account-pin" className="h-11 font-mono tracking-widest" value={form.pin} onChange={(event) => update("pin", event.target.value.replace(/\D/g, "").slice(0, 5))} placeholder="5-digit PIN" inputMode="numeric" />
+              <p className="text-xs text-muted-foreground">Enter a unique five-digit PIN for authorized operations.</p>
             </div>
           )}
           <div className="sm:col-span-2"><PasswordField id="account-password" label={account ? "Account password" : "Temporary password"} value={form.password} onChange={(value) => update("password", value)} placeholder="At least 8 characters" helper={account ? "Use the eye button to view the saved password or enter a replacement." : undefined} /></div>

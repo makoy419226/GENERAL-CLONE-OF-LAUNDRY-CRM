@@ -2566,6 +2566,7 @@ export async function registerRoutes(
     updateAdministrator: z.boolean().optional().default(false),
     administratorId: z.coerce.number().int().positive().optional(),
     name: z.string().trim().min(2).max(120),
+    slug: z.string().trim().min(2).max(80).regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, "Use lowercase letters, numbers, and hyphens"),
     businessType: z.string().trim().min(2).max(80),
     timezone: z.string().trim().min(3).max(80),
     currency: z.string().trim().length(3).transform((value) => value.toUpperCase()),
@@ -2621,6 +2622,7 @@ export async function registerRoutes(
     name: z.string().trim().min(2, "Account name is required").max(120),
     username: z.string().trim().min(3).max(80).regex(/^[A-Za-z0-9._-]+$/),
     email: z.string().trim().email().optional().or(z.literal("")),
+    pin: z.string().regex(/^\d{5}$/, "PIN must be 5 digits").optional().or(z.literal("")),
     role: tenantAccountRoleSchema,
     password: z.string().min(8, "Password must have at least 8 characters").max(200),
     active: z.boolean().default(true),
@@ -2856,6 +2858,7 @@ export async function registerRoutes(
           .update(laundryBusinesses)
           .set({
             name: parsed.data.name,
+            slug: parsed.data.slug,
             businessType: parsed.data.businessType,
             timezone: parsed.data.timezone,
             currency: parsed.data.currency,
@@ -3014,9 +3017,20 @@ export async function registerRoutes(
       }
 
       const accountPin =
-        parsed.data.role === "admin"
+        parsed.data.pin ||
+        (parsed.data.role === "admin"
           ? await generateUniqueTenantAdminPin()
-          : null;
+          : null);
+      if (accountPin) {
+        const [existingPin] = await db
+          .select({ id: users.id })
+          .from(users)
+          .where(eq(users.pin, accountPin))
+          .limit(1);
+        if (existingPin) {
+          return res.status(409).json({ message: "This PIN is already assigned to another account" });
+        }
+      }
       const [account] = await db
         .insert(users)
         .values({
@@ -3079,6 +3093,30 @@ export async function registerRoutes(
         return res.status(404).json({ message: "Tenant account not found" });
       }
 
+      if (parsed.data.pin && parsed.data.pin !== existing.pin) {
+        const [existingPin] = await db
+          .select({ id: users.id })
+          .from(users)
+          .where(and(eq(users.pin, parsed.data.pin), ne(users.id, existing.id)))
+          .limit(1);
+        if (existingPin) {
+          return res.status(409).json({
+            message: "This PIN is already assigned to another account",
+          });
+        }
+
+        const workersWithPins = await db
+          .select({ pin: packingWorkers.pin })
+          .from(packingWorkers);
+        for (const worker of workersWithPins) {
+          if (worker.pin && await bcrypt.compare(parsed.data.pin, worker.pin)) {
+            return res.status(409).json({
+              message: "This PIN is already assigned to a worker",
+            });
+          }
+        }
+      }
+
       const removesActiveAdministrator =
         existing.role === "admin" &&
         Boolean(existing.active) &&
@@ -3109,6 +3147,7 @@ export async function registerRoutes(
           name: parsed.data.name,
           username: parsed.data.username,
           email: parsed.data.email || null,
+          ...(parsed.data.pin ? { pin: parsed.data.pin } : {}),
           role: parsed.data.role,
           active: parsed.data.active,
           ...(parsed.data.password ? { password: parsed.data.password } : {}),
@@ -10722,6 +10761,7 @@ export async function registerRoutes(
     const parsed = z.object({
       currentPassword: z.string().min(1, "Current password is required"),
       newPassword: z.string().min(8, "Password must have at least 8 characters").max(200).or(z.literal("")),
+      username: z.string().trim().min(3, "Username must have at least 3 characters").max(80).regex(/^[A-Za-z0-9._-]+$/, "Choose a valid username"),
       name: z.string().trim().min(2, "Administrator name is required").max(120),
       email: z.string().trim().email("Choose a valid email address").or(z.literal("")),
       pin: z.string().regex(/^\d{5}$/, "PIN must be 5 digits").or(z.literal("")),
@@ -10753,6 +10793,20 @@ export async function registerRoutes(
       });
     }
 
+    if (parsed.data.username !== account.username) {
+      const [existingUsername] = await db
+        .select({ id: users.id })
+        .from(users)
+        .where(and(eq(users.username, parsed.data.username), ne(users.id, account.id)))
+        .limit(1);
+      if (existingUsername) {
+        return res.status(409).json({
+          success: false,
+          message: "That username is already in use",
+        });
+      }
+    }
+
     if (parsed.data.pin && parsed.data.pin !== account.pin) {
       const [existingUser] = await db
         .select({ id: users.id })
@@ -10770,6 +10824,7 @@ export async function registerRoutes(
     const [updated] = await db
       .update(users)
       .set({
+        username: parsed.data.username,
         name: parsed.data.name,
         email: parsed.data.email || null,
         ...(parsed.data.pin ? { pin: parsed.data.pin } : {}),
@@ -10799,9 +10854,24 @@ export async function registerRoutes(
       })
       .where(eq(companyContactSettings.businessId, auth.businessId));
 
+    const token = createAuthToken({
+      userId: account.id,
+      username: updated.username,
+      role: account.role,
+      businessId: account.businessId,
+    });
+    res.cookie(AUTH_COOKIE_NAME, token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "strict",
+      path: "/",
+      maxAge: AUTH_TOKEN_TTL_MS,
+    });
+
     res.json({
       success: true,
       message: "Administrator account settings updated successfully",
+      token,
       settings: {
         username: updated.username,
         name: updated.name || updated.username,
