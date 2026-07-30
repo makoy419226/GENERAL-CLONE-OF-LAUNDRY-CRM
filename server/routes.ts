@@ -2542,7 +2542,7 @@ export async function registerRoutes(
       .min(2, "Business slug is required")
       .max(80)
       .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, "Use lowercase letters, numbers, and hyphens"),
-    businessType: z.string().trim().min(2).max(80).default("laundry"),
+    businessType: z.literal("laundry").default("laundry"),
     timezone: z.string().trim().min(3).max(80).default("Asia/Dubai"),
     currency: z.string().trim().length(3).transform((value) => value.toUpperCase()).default("AED"),
     contactEmail: z.string().trim().email().optional().or(z.literal("")),
@@ -2567,7 +2567,7 @@ export async function registerRoutes(
     administratorId: z.coerce.number().int().positive().optional(),
     name: z.string().trim().min(2).max(120),
     slug: z.string().trim().min(2).max(80).regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, "Use lowercase letters, numbers, and hyphens"),
-    businessType: z.string().trim().min(2).max(80),
+    businessType: z.literal("laundry"),
     timezone: z.string().trim().min(3).max(80),
     currency: z.string().trim().length(3).transform((value) => value.toUpperCase()),
     contactEmail: z.string().trim().email().optional().or(z.literal("")),

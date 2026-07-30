@@ -98,13 +98,6 @@ type ConsoleSection = "overview" | "workspaces" | "accounts";
 type WorkspaceStatusFilter = "all" | "active" | "suspended";
 type ManageTab = "profile" | "accounts" | "administrator";
 
-const BUSINESS_TYPES = [
-  { value: "laundry", label: "Laundry services" },
-  { value: "dry-cleaning", label: "Dry cleaning" },
-  { value: "textile-care", label: "Textile care" },
-  { value: "other", label: "Other service business" },
-];
-
 const TIMEZONES = [
   "Asia/Dubai",
   "UTC",
@@ -1216,9 +1209,9 @@ function CreateWorkspaceDialog({ open, onOpenChange, form, updateForm, setSlugTo
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-3xl">
         <DialogHeader><DialogTitle>Create workspace organization</DialogTitle><DialogDescription>Provision an isolated organization identity and its first business administrator.</DialogDescription></DialogHeader>
         <div className="grid gap-5 py-2 sm:grid-cols-2">
-          <div className="space-y-2 sm:col-span-2"><Label htmlFor="workspace-name">Organization name</Label><Input id="workspace-name" className="h-11" value={form.name} onChange={(event) => updateForm("name", event.target.value)} placeholder="Downtown Services" autoFocus /></div>
+          <div className="space-y-2 sm:col-span-2"><Label htmlFor="workspace-name">Laundry name</Label><Input id="workspace-name" className="h-11" value={form.name} onChange={(event) => updateForm("name", event.target.value)} placeholder="Downtown Laundry" autoFocus /></div>
           <div className="space-y-2"><Label htmlFor="workspace-slug">Workspace ID</Label><Input id="workspace-slug" className="h-11" value={form.slug} onChange={(event) => { setSlugTouched(true); updateForm("slug", toSlug(event.target.value)); }} placeholder="downtown-services" /><p className="text-xs text-muted-foreground">Permanent lowercase platform identifier.</p></div>
-          <div className="space-y-2"><Label>Business type</Label><Select value={form.businessType} onValueChange={(value) => updateForm("businessType", value)}><SelectTrigger className="h-11"><SelectValue /></SelectTrigger><SelectContent>{BUSINESS_TYPES.map((item) => <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>)}</SelectContent></Select></div>
+          <div className="space-y-2"><Label>Business type</Label><Input className="h-11" value="Laundry services" readOnly aria-readonly="true" /></div>
           <div className="space-y-2"><Label>Timezone</Label><Select value={form.timezone} onValueChange={(value) => updateForm("timezone", value)}><SelectTrigger className="h-11"><SelectValue /></SelectTrigger><SelectContent>{TIMEZONES.map((value) => <SelectItem key={value} value={value}>{value}</SelectItem>)}</SelectContent></Select></div>
           <div className="space-y-2"><Label>Currency</Label><Select value={form.currency} onValueChange={(value) => updateForm("currency", value)}><SelectTrigger className="h-11"><SelectValue /></SelectTrigger><SelectContent>{CURRENCIES.map((value) => <SelectItem key={value} value={value}>{value}</SelectItem>)}</SelectContent></Select></div>
           <div className="space-y-2"><Label htmlFor="workspace-email">Contact email</Label><Input id="workspace-email" className="h-11" type="email" value={form.contactEmail} onChange={(event) => updateForm("contactEmail", event.target.value)} placeholder="office@example.com" /></div>
@@ -1287,7 +1280,7 @@ function ManageWorkspaceDialog({
           <TabsContent value="profile" className="grid gap-5 py-4 sm:grid-cols-2">
             <div className="space-y-2 sm:col-span-2"><Label htmlFor="edit-workspace-name">Organization name</Label><Input id="edit-workspace-name" className="h-11" value={form.name} onChange={(event) => updateForm("name", event.target.value)} /></div>
             <div className="space-y-2 sm:col-span-2"><Label htmlFor="edit-workspace-slug">Workspace ID</Label><Input id="edit-workspace-slug" className="h-11" value={form.slug} onChange={(event) => updateForm("slug", toSlug(event.target.value))} /><p className="text-xs text-muted-foreground">Unique lowercase platform identifier.</p></div>
-            <div className="space-y-2"><Label>Business type</Label><Select value={form.businessType} onValueChange={(value) => updateForm("businessType", value)}><SelectTrigger className="h-11"><SelectValue /></SelectTrigger><SelectContent>{BUSINESS_TYPES.map((item) => <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>)}</SelectContent></Select></div>
+            <div className="space-y-2"><Label>Business type</Label><Input className="h-11" value="Laundry services" readOnly aria-readonly="true" /></div>
             <div className="space-y-2"><Label>Currency</Label><Select value={form.currency} onValueChange={(value) => updateForm("currency", value)}><SelectTrigger className="h-11"><SelectValue /></SelectTrigger><SelectContent>{CURRENCIES.map((value) => <SelectItem key={value} value={value}>{value}</SelectItem>)}</SelectContent></Select></div>
             <div className="space-y-2"><Label>Timezone</Label><Select value={form.timezone} onValueChange={(value) => updateForm("timezone", value)}><SelectTrigger className="h-11"><SelectValue /></SelectTrigger><SelectContent>{TIMEZONES.map((value) => <SelectItem key={value} value={value}>{value}</SelectItem>)}</SelectContent></Select></div>
             <div className="space-y-2"><Label htmlFor="edit-workspace-telephone">Telephone</Label><Input id="edit-workspace-telephone" className="h-11" type="tel" value={form.telephone} onChange={(event) => updateForm("telephone", event.target.value)} /></div>

@@ -18,17 +18,16 @@ export interface CompanyContactInfo {
 }
 
 export const DEFAULT_COMPANY_CONTACT: CompanyContactInfo = {
-  id: 1,
-  companyName: "Liquid Washes Laundry",
-  tagline: "Smartness Partners",
-  telephone: "026 815 824",
-  mobilePhone: "+971 56 338 0001",
-  whatsappPhone: "+971 56 338 0001",
-  email: "info@lwl.ae",
-  website: "www.lwl.ae",
-  addressLine1: "Central Market D/109",
-  addressLine2: "Al Dhanna City, Al Ruwais",
-  addressLine3: "Abu Dhabi - UAE",
+  companyName: "Laundry Business",
+  tagline: null,
+  telephone: null,
+  mobilePhone: null,
+  whatsappPhone: null,
+  email: null,
+  website: null,
+  addressLine1: null,
+  addressLine2: null,
+  addressLine3: null,
   dashboardClockHour12: true,
   updatedAt: null,
 };

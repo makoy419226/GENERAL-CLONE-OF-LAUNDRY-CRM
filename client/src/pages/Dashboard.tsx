@@ -190,9 +190,16 @@ export default function Dashboard() {
   }) || [];
 
   if (isSection) {
+    const hasCompanyContacts = Boolean(
+      companyContact.telephone ||
+      companyContact.mobilePhone ||
+      companyContact.email ||
+      companyContact.website,
+    );
+
     return (
       <div className="flex flex-col h-screen">
-        <div className="bg-primary text-white overflow-hidden">
+        {hasCompanyContacts && <div className="bg-primary text-white overflow-hidden">
           <div className="animate-marquee flex min-w-max whitespace-nowrap">
             {Array.from({ length: 6 }, (_, copyIndex) => (
               <div
@@ -200,26 +207,26 @@ export default function Dashboard() {
                 className="flex shrink-0 items-center gap-16 pr-16 py-2"
                 aria-hidden={copyIndex > 0}
               >
-                <span className="flex items-center gap-2">
+                {companyContact.telephone && <span className="flex items-center gap-2">
                   <Phone className="w-4 h-4 animate-blink" />
-                  <span className="animate-blink font-bold">Tel: {companyContact.telephone || "-"}</span>
-                </span>
-                <span className="flex items-center gap-2">
+                  <span className="animate-blink font-bold">Tel: {companyContact.telephone}</span>
+                </span>}
+                {companyContact.mobilePhone && <span className="flex items-center gap-2">
                   <Phone className="w-4 h-4 animate-blink" />
-                  <span className="animate-blink font-bold">Phone: {companyContact.mobilePhone || "-"}</span>
-                </span>
-                <span className="flex items-center gap-2">
+                  <span className="animate-blink font-bold">Phone: {companyContact.mobilePhone}</span>
+                </span>}
+                {companyContact.email && <span className="flex items-center gap-2">
                   <Mail className="w-4 h-4" />
-                  Email: {companyContact.email || "-"}
-                </span>
-                <span className="flex items-center gap-2">
+                  Email: {companyContact.email}
+                </span>}
+                {companyContact.website && <span className="flex items-center gap-2">
                   <Globe className="w-4 h-4" />
-                  {companyContact.website || "-"}
-                </span>
+                  {companyContact.website}
+                </span>}
               </div>
             ))}
           </div>
-        </div>
+        </div>}
         
         <div className="p-4 border-b bg-card">
           <h1 className="text-2xl font-bold">Staff Dashboard</h1>
