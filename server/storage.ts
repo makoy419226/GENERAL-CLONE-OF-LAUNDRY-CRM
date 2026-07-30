@@ -53,7 +53,7 @@ import {
   type Review,
   type InsertReview,
 } from "@shared/schema";
-import { eq, ilike, or, desc, asc, and, ne, gte, lte, sql, inArray, type SQLWrapper } from "drizzle-orm";
+import { eq, ilike, or, desc, asc, and, ne, gte, lte, sql, inArray, isNull, type SQLWrapper } from "drizzle-orm";
 import { DEFAULT_PRODUCT_BASE_CATEGORIES, normalizeProductCategorySettings } from "@shared/productCategories";
 import {
   normalizePhoneForComparison,
@@ -3238,8 +3238,20 @@ export class DatabaseStorage implements IStorage {
       `);
     }
 
-    const [existing] = await db.select().from(companyContactSettings).orderBy(companyContactSettings.id);
     const businessId = currentTenantBusinessId();
+    const [existing] = businessId
+      ? await db
+          .select()
+          .from(companyContactSettings)
+          .where(eq(companyContactSettings.businessId, businessId))
+          .orderBy(companyContactSettings.id)
+          .limit(1)
+      : await db
+          .select()
+          .from(companyContactSettings)
+          .where(isNull(companyContactSettings.businessId))
+          .orderBy(companyContactSettings.id)
+          .limit(1);
     const [business] = businessId
       ? await db
           .select()
@@ -3261,7 +3273,19 @@ export class DatabaseStorage implements IStorage {
 
     const [created] = await db
       .insert(companyContactSettings)
-      .values({})
+      .values({
+        businessId: businessId || null,
+        companyName: business?.name || "Laundry Business",
+        tagline: null,
+        telephone: null,
+        mobilePhone: null,
+        whatsappPhone: null,
+        email: business?.contactEmail || null,
+        website: null,
+        addressLine1: null,
+        addressLine2: null,
+        addressLine3: null,
+      })
       .returning();
     return business
       ? {

@@ -1645,16 +1645,16 @@ export async function registerRoutes(
     await db.execute(sql`
       CREATE TABLE IF NOT EXISTS company_contact_settings (
         id SERIAL PRIMARY KEY,
-        company_name TEXT NOT NULL DEFAULT 'Liquid Washes Laundry',
-        tagline TEXT DEFAULT 'Smartness Partners',
-        telephone TEXT DEFAULT '026 815 824',
-        mobile_phone TEXT DEFAULT '+971 56 338 0001',
-        whatsapp_phone TEXT DEFAULT '+971 56 338 0001',
-        email TEXT DEFAULT 'info@lwl.ae',
-        website TEXT DEFAULT 'www.lwl.ae',
-        address_line_1 TEXT DEFAULT 'Central Market D/109',
-        address_line_2 TEXT DEFAULT 'Al Dhanna City, Al Ruwais',
-        address_line_3 TEXT DEFAULT 'Abu Dhabi - UAE',
+        company_name TEXT NOT NULL DEFAULT 'Laundry Business',
+        tagline TEXT,
+        telephone TEXT,
+        mobile_phone TEXT,
+        whatsapp_phone TEXT,
+        email TEXT,
+        website TEXT,
+        address_line_1 TEXT,
+        address_line_2 TEXT,
+        address_line_3 TEXT,
         dashboard_clock_hour12 BOOLEAN NOT NULL DEFAULT TRUE,
         updated_at TIMESTAMP NOT NULL DEFAULT NOW()
       )
@@ -1662,6 +1662,19 @@ export async function registerRoutes(
     await db.execute(sql`
       ALTER TABLE company_contact_settings
       ADD COLUMN IF NOT EXISTS dashboard_clock_hour12 BOOLEAN NOT NULL DEFAULT TRUE
+    `);
+    await db.execute(sql`
+      ALTER TABLE company_contact_settings
+        ALTER COLUMN company_name SET DEFAULT 'Laundry Business',
+        ALTER COLUMN tagline DROP DEFAULT,
+        ALTER COLUMN telephone DROP DEFAULT,
+        ALTER COLUMN mobile_phone DROP DEFAULT,
+        ALTER COLUMN whatsapp_phone DROP DEFAULT,
+        ALTER COLUMN email DROP DEFAULT,
+        ALTER COLUMN website DROP DEFAULT,
+        ALTER COLUMN address_line_1 DROP DEFAULT,
+        ALTER COLUMN address_line_2 DROP DEFAULT,
+        ALTER COLUMN address_line_3 DROP DEFAULT
     `);
   } catch (err) {
     logStartupMigrationError("Company contact settings table setup error", err);
@@ -10675,14 +10688,14 @@ export async function registerRoutes(
 
     try {
       const settings = await storage.updateCompanyContactSettings({
-        companyName: normalize(companyName) || "Liquid Washes Laundry",
+        companyName: normalize(companyName) || "Laundry Business",
         tagline: normalize(tagline),
         telephone: normalize(telephone),
         mobilePhone: normalize(mobilePhone),
         whatsappPhone: normalize(whatsappPhone) || normalize(mobilePhone),
         email: normalize(email),
         website: normalize(website),
-        addressLine1: normalize(addressLine1) || "Central Market D/109",
+        addressLine1: normalize(addressLine1),
         addressLine2: normalize(addressLine2),
         addressLine3: normalize(addressLine3),
       });
@@ -12055,7 +12068,7 @@ export async function registerRoutes(
   app.get("/api/system-flowchart", async (req, res) => {
     const doc = new PDFDocument({ size: "A4", margin: 40 });
     const companyContact = await storage.getCompanyContactSettings();
-    const companyName = String(companyContact.companyName || "Liquid Washes Laundry");
+    const companyName = String(companyContact.companyName || "Laundry Business");
     const companyPhoneParts = [
       companyContact.telephone ? `Tel: ${companyContact.telephone}` : "",
       companyContact.mobilePhone ? `Mobile: ${companyContact.mobilePhone}` : "",
@@ -12065,7 +12078,7 @@ export async function registerRoutes(
     res.setHeader("Content-Type", "application/pdf");
     res.setHeader(
       "Content-Disposition",
-      'attachment; filename="LiquidWashes_System_Flowchart.pdf"',
+      'attachment; filename="LaundryCRM_System_Flowchart.pdf"',
     );
     doc.pipe(res);
 
