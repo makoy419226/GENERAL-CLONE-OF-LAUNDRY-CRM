@@ -1,7 +1,7 @@
 {
-  "name": "Liquid Washes Laundry",
-  "short_name": "LWL",
-  "description": "Laundry Management System",
+  "name": "Laundry CRM",
+  "short_name": "Laundry CRM",
+  "description": "Multi-tenant laundry management platform",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#ffffff",
