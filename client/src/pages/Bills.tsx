@@ -94,6 +94,7 @@ import {
   escapeHtml,
   formatCompanyPhoneLine,
   getCompanyAddressLines,
+  getPublicTrackingUrl,
   useCompanyContactInfo,
 } from "@/lib/companyContact";
 import { isEditableKeyboardShortcutTarget } from "@/lib/keyboardShortcuts";
@@ -4122,7 +4123,7 @@ export default function Bills() {
       )
       .join("%0A");
 
-    const trackingUrl = `lwl.software/track`;
+    const trackingUrl = getPublicTrackingUrl();
     const companyLines = [
       `*${companyContact.companyName.toUpperCase()}*`,
       ...companyAddressLines,
@@ -9984,14 +9985,14 @@ export default function Bills() {
               <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '8px' }}>
                 <div style={{ backgroundColor: 'white', padding: '6px', borderRadius: '4px' }}>
                   <QRCodeSVG 
-                    value="https://lwl.software/track" 
+                    value={getPublicTrackingUrl()}
                     size={70}
                     level="M"
                   />
                 </div>
               </div>
               <div style={{ fontSize: '11px', color: '#1e40af', fontWeight: 'bold' }}>
-                lwl.software/track
+                {getPublicTrackingUrl()}
               </div>
               <div style={{ fontSize: '12px', fontWeight: 'bold', color: '#333', marginTop: '4px' }}>
                 Order Number: {createdBill?.bill.referenceNumber}

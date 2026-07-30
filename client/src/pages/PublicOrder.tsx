@@ -20,6 +20,16 @@ interface PublicOrderData {
   clientName: string;
   deliveryPhotos: string[];
   deliveryPhoto: string | null;
+  business?: {
+    companyName: string;
+    logoUrl: string | null;
+    telephone: string | null;
+    mobilePhone: string | null;
+    email: string | null;
+    addressLine1: string | null;
+    addressLine2: string | null;
+    addressLine3: string | null;
+  } | null;
 }
 
 function formatItems(items: string): string[] {
@@ -131,9 +141,20 @@ export default function PublicOrder() {
           >
             <X className="h-5 w-5" />
           </Button>
-          <img src={logoImage} alt="Liquid Washes" className="h-16 mx-auto mb-2" />
-          <h1 className="text-xl font-bold text-blue-800 dark:text-blue-400">Liquid Washes Laundry</h1>
+          <img src={order.business?.logoUrl || logoImage} alt={`${order.business?.companyName || "Laundry CRM"} logo`} className="h-16 max-w-[200px] object-contain mx-auto mb-2" />
+          <h1 className="text-xl font-bold text-blue-800 dark:text-blue-400">{order.business?.companyName || "Laundry CRM"}</h1>
           <p className="text-sm text-muted-foreground">Order Tracking</p>
+          {order.business && (
+            <div className="mt-2 space-y-0.5 text-xs text-muted-foreground">
+              {[order.business.addressLine1, order.business.addressLine2, order.business.addressLine3]
+                .filter(Boolean)
+                .map((line) => <p key={line}>{line}</p>)}
+              {(order.business.mobilePhone || order.business.telephone) && (
+                <p>{order.business.mobilePhone || order.business.telephone}</p>
+              )}
+              {order.business.email && <p>{order.business.email}</p>}
+            </div>
+          )}
         </div>
 
         <Card>

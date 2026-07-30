@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { InvoiceItemDescription } from "@/components/InvoiceItemDescription";
 import { Printer, X } from "lucide-react";
-import { formatCompanyPhoneLine, getCompanyAddressLines, useCompanyContactInfo } from "@/lib/companyContact";
+import { formatCompanyPhoneLine, getCompanyAddressLines, getPublicTrackingUrl, useCompanyContactInfo } from "@/lib/companyContact";
 import logoImage from "@/assets/images/lwl-logo.png";
 
 interface BillInvoiceProps {
@@ -43,7 +43,7 @@ export function BillInvoice({
   originalAmount,
   onClose,
 }: BillInvoiceProps) {
-  const trackingUrl = orderNumber ? `lwl.software/track` : null;
+  const trackingUrl = orderNumber ? getPublicTrackingUrl() : null;
   const invoiceRef = useRef<HTMLDivElement>(null);
   const { companyContact } = useCompanyContactInfo();
   const companyAddressLines = getCompanyAddressLines(companyContact);

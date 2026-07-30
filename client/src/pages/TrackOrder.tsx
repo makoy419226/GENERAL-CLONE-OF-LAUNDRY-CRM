@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { useLocation } from "wouter";
+import { useLocation, useParams } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,6 +12,20 @@ import logoImage from "@/assets/images/lwl-logo.png";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
 import { InvoiceItemDescription } from "@/components/InvoiceItemDescription";
+import { useCompanyContactInfo } from "@/lib/companyContact";
+
+interface PublicBusinessProfile {
+  slug: string;
+  companyName: string;
+  logoUrl: string | null;
+  telephone: string | null;
+  mobilePhone: string | null;
+  email: string | null;
+  website: string | null;
+  addressLine1: string | null;
+  addressLine2: string | null;
+  addressLine3: string | null;
+}
 
 interface TrackOrderData {
   orderNumber: string;
@@ -36,16 +50,44 @@ interface TrackOrderData {
   billNumber: string | null;
   discountAmount: string | null;
   originalAmount: string | null;
+  business?: PublicBusinessProfile | null;
 }
 
 export default function TrackOrder() {
+  const { businessSlug: routeBusinessSlug } = useParams<{ businessSlug?: string }>();
   const [orderNumber, setOrderNumber] = useState("");
   const [searchedOrder, setSearchedOrder] = useState("");
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   
-  const isLoggedIn = !!localStorage.getItem("user");
-  
+  const storedUser = (() => {
+    try {
+      return JSON.parse(localStorage.getItem("user") || "null") as {
+        businessSlug?: string | null;
+      } | null;
+    } catch {
+      return null;
+    }
+  })();
+  const isLoggedIn = !!storedUser;
+  const businessSlug = String(routeBusinessSlug || storedUser?.businessSlug || "")
+    .trim()
+    .toLowerCase();
+  const { companyContact } = useCompanyContactInfo();
+
+  const { data: publicBusiness } = useQuery<PublicBusinessProfile>({
+    queryKey: ["/api/public/businesses", businessSlug, "tracking-profile"],
+    queryFn: async ({ signal }) => {
+      const res = await fetch(
+        `/api/public/businesses/${encodeURIComponent(businessSlug)}/tracking-profile`,
+        { signal },
+      );
+      if (!res.ok) throw new Error("Laundry business not found");
+      return res.json();
+    },
+    enabled: !!businessSlug,
+    retry: false,
+  });
   const handleClose = () => {
     if (isLoggedIn) {
       setLocation("/dashboard");
@@ -55,19 +97,27 @@ export default function TrackOrder() {
   };
 
   const { data: order, isLoading, error, isFetching } = useQuery<TrackOrderData>({
-    queryKey: ["/api/orders/track", searchedOrder],
+    queryKey: ["/api/orders/track", businessSlug || "authenticated", searchedOrder],
     queryFn: async ({ signal }) => {
       if (!searchedOrder) throw new Error("No order number");
-      const res = await fetch(`/api/orders/track/${searchedOrder}`, { signal });
+      const endpoint = businessSlug
+        ? `/api/public/businesses/${encodeURIComponent(businessSlug)}/orders/track/${encodeURIComponent(searchedOrder)}`
+        : `/api/orders/track/${encodeURIComponent(searchedOrder)}`;
+      const res = await fetch(endpoint, { signal });
       if (!res.ok) {
         const data = await res.json();
         throw new Error(data.message || "Order not found");
       }
       return res.json();
     },
-    enabled: !!searchedOrder,
+    enabled: !!searchedOrder && (!!businessSlug || isLoggedIn),
     retry: false,
   });
+  const trackingBusiness = publicBusiness || order?.business;
+  const trackingCompanyName =
+    trackingBusiness?.companyName ||
+    (isLoggedIn ? companyContact.companyName : "Laundry CRM");
+  const trackingLogo = trackingBusiness?.logoUrl || logoImage;
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
@@ -177,9 +227,25 @@ export default function TrackOrder() {
     <div className="min-h-full bg-gradient-to-b from-blue-50 to-white p-4 dark:from-slate-900 dark:to-slate-800">
       <div className="max-w-lg mx-auto space-y-6">
         <div className="text-center py-6">
-          <img src={logoImage} alt="Liquid Washes" className="h-20 mx-auto mb-3" data-testid="img-track-logo" />
-          <h1 className="text-2xl font-bold text-blue-800 dark:text-blue-300">Liquid Washes Laundry</h1>
+          <img src={trackingLogo} alt={`${trackingCompanyName} logo`} className="h-20 max-w-[220px] object-contain mx-auto mb-3" data-testid="img-track-logo" />
+          <h1 className="text-2xl font-bold text-blue-800 dark:text-blue-300">{trackingCompanyName}</h1>
           <p className="text-muted-foreground mt-1">Customer Order Tracking</p>
+          {trackingBusiness && (
+            <div className="mt-2 space-y-0.5 text-xs text-muted-foreground">
+              {[trackingBusiness.addressLine1, trackingBusiness.addressLine2, trackingBusiness.addressLine3]
+                .filter(Boolean)
+                .map((line) => <p key={line}>{line}</p>)}
+              {(trackingBusiness.mobilePhone || trackingBusiness.telephone) && (
+                <p>{trackingBusiness.mobilePhone || trackingBusiness.telephone}</p>
+              )}
+              {trackingBusiness.email && <p>{trackingBusiness.email}</p>}
+            </div>
+          )}
+          {!businessSlug && !isLoggedIn && (
+            <p className="mt-2 text-sm text-destructive">
+              This tracking link is incomplete. Please use the link supplied by your laundry business.
+            </p>
+          )}
           {isLoggedIn && (
             <Button
               variant="outline"
@@ -213,7 +279,7 @@ export default function TrackOrder() {
                 className="flex-1"
                 data-testid="input-order-number"
               />
-              <Button type="submit" disabled={!orderNumber.trim() || isFetching} data-testid="button-search-order">
+              <Button type="submit" disabled={!orderNumber.trim() || isFetching || (!businessSlug && !isLoggedIn)} data-testid="button-search-order">
                 {isFetching ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
               </Button>
             </form>

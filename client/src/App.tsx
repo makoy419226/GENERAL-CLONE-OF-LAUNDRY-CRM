@@ -109,6 +109,7 @@ function Router() {
         <Route path="/clients/:id" component={ClientDetails} />
         <Route path="/incidents" component={Incidents} />
         <Route path="/contact" component={Contact} />
+        <Route path="/track/:businessSlug" component={TrackOrder} />
         <Route path="/track" component={TrackOrder} />
         <Route component={NotFound} />
       </Switch>
@@ -133,6 +134,7 @@ function Router() {
       {rolePermissions["/incidents"].includes(userRole) && <Route path="/incidents" component={Incidents} />}
       <Route path="/due-customers" component={() => <Redirect to="/bills" />} />
       <Route path="/contact" component={Contact} />
+      {rolePermissions["/track"].includes(userRole) && <Route path="/track/:businessSlug" component={TrackOrder} />}
       {rolePermissions["/track"].includes(userRole) && <Route path="/track" component={TrackOrder} />}
       {rolePermissions["/admin-settings"].includes(userRole) && <Route path="/admin-settings" component={AdminSettings} />}
       <Route component={NotFound} />
@@ -545,7 +547,11 @@ function App() {
     );
   }
 
-  if (location.startsWith("/order/") || (location === "/track" && !isLoggedIn)) {
+  if (
+    location.startsWith("/order/") ||
+    (location.startsWith("/track/") && !isLoggedIn) ||
+    (location === "/track" && !isLoggedIn)
+  ) {
     return (
       <QueryClientProvider client={queryClient}>
         <TooltipProvider>
@@ -556,12 +562,10 @@ function App() {
               <main className="relative z-10 min-h-0 flex-1 overflow-auto">
                 <Switch>
                   <Route path="/order/:token" component={PublicOrder} />
+                  <Route path="/track/:businessSlug" component={TrackOrder} />
                   <Route path="/track" component={TrackOrder} />
                 </Switch>
               </main>
-              <div className="relative z-10">
-                <AppFooter />
-              </div>
             </div>
             <Toaster />
           </AppleMotionProvider>

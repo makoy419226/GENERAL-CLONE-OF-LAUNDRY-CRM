@@ -33,6 +33,7 @@ export interface UserInfo {
   name: string;
   businessId?: number | null;
   businessName?: string | null;
+  businessSlug?: string | null;
   businessLogoUrl?: string | null;
 }
 interface LoginProps {

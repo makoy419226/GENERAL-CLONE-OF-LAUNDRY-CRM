@@ -128,6 +128,22 @@ export const toWhatsappHref = (contact: CompanyContactInfo) => {
   return phone ? `https://wa.me/${phone}` : "#";
 };
 
+export const getPublicTrackingUrl = () => {
+  let businessSlug = "";
+  try {
+    const user = JSON.parse(localStorage.getItem("user") || "null") as {
+      businessSlug?: string | null;
+    } | null;
+    businessSlug = String(user?.businessSlug || "").trim();
+  } catch {
+    businessSlug = "";
+  }
+  const path = businessSlug
+    ? `/track/${encodeURIComponent(businessSlug)}`
+    : "/track";
+  return typeof window === "undefined" ? path : `${window.location.origin}${path}`;
+};
+
 export const escapeHtml = (value: string | null | undefined) =>
   String(value || "")
     .replace(/&/g, "&amp;")

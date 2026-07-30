@@ -1955,7 +1955,12 @@ export async function registerRoutes(
 
   const isPublicPlatformApiPath = (req: Request) =>
     (req.method === "POST" && publicPlatformPostPaths.has(req.path)) ||
-    (req.method === "GET" && /^\/api\/orders\/public\/[^/]+$/.test(req.path));
+    (req.method === "GET" &&
+      (
+        /^\/api\/orders\/public\/[^/]+$/.test(req.path) ||
+        /^\/api\/public\/businesses\/[^/]+\/tracking-profile$/.test(req.path) ||
+        /^\/api\/public\/businesses\/[^/]+\/orders\/track\/[^/]+$/.test(req.path)
+      ));
 
   const sendIdentityFailure = (
     res: ExpressResponse,
@@ -2490,6 +2495,7 @@ export async function registerRoutes(
           name: user.name,
           businessId: user.businessId || null,
           businessName: business?.name || null,
+          businessSlug: business?.slug || null,
           businessLogoUrl: business?.logoUrl || null,
         },
       });
@@ -11455,6 +11461,49 @@ export async function registerRoutes(
     res.status(401).json({ success: false, message: "Invalid PIN" });
   });
 
+  const getPublicBusinessTrackingProfile = async (businessId: number) => {
+    const [business] = await db
+      .select()
+      .from(laundryBusinesses)
+      .where(and(eq(laundryBusinesses.id, businessId), eq(laundryBusinesses.active, true)))
+      .limit(1);
+    if (!business) return null;
+
+    const [contact] = await db
+      .select()
+      .from(companyContactSettings)
+      .where(eq(companyContactSettings.businessId, business.id))
+      .limit(1);
+
+    return {
+      slug: business.slug,
+      companyName: business.name,
+      logoUrl: business.logoUrl || null,
+      telephone: contact?.telephone || null,
+      mobilePhone: contact?.mobilePhone || business.phone || null,
+      whatsappPhone: contact?.whatsappPhone || null,
+      email: contact?.email || business.contactEmail || null,
+      website: contact?.website || null,
+      addressLine1: contact?.addressLine1 || null,
+      addressLine2: contact?.addressLine2 || null,
+      addressLine3: contact?.addressLine3 || null,
+    };
+  };
+
+  app.get("/api/public/businesses/:businessSlug/tracking-profile", async (req, res) => {
+    const slug = String(req.params.businessSlug || "").trim().toLowerCase();
+    const [business] = await db
+      .select({ id: laundryBusinesses.id })
+      .from(laundryBusinesses)
+      .where(and(eq(laundryBusinesses.slug, slug), eq(laundryBusinesses.active, true)))
+      .limit(1);
+    if (!business) {
+      return res.status(404).json({ message: "Laundry business not found" });
+    }
+    const profile = await getPublicBusinessTrackingProfile(business.id);
+    res.json(profile);
+  });
+
   // Public order view by token (no auth required) - limited safe data only
   app.get("/api/orders/public/:token", async (req, res) => {
     const { token } = req.params;
@@ -11484,6 +11533,88 @@ export async function registerRoutes(
       clientName,
       deliveryPhotos: order.deliveryPhotos || [],
       deliveryPhoto: order.deliveryPhoto,
+      business: order.businessId
+        ? await getPublicBusinessTrackingProfile(order.businessId)
+        : null,
+    });
+  });
+
+  app.get("/api/public/businesses/:businessSlug/orders/track/:orderNumber", async (req, res) => {
+    const slug = String(req.params.businessSlug || "").trim().toLowerCase();
+    let orderNumber = String(req.params.orderNumber || "").trim().toUpperCase();
+    if (!orderNumber) {
+      return res.status(400).json({ message: "Invalid order number" });
+    }
+    if (!orderNumber.startsWith("ORD-")) {
+      orderNumber = `ORD-${orderNumber}`;
+    }
+
+    const [business] = await db
+      .select()
+      .from(laundryBusinesses)
+      .where(and(eq(laundryBusinesses.slug, slug), eq(laundryBusinesses.active, true)))
+      .limit(1);
+    if (!business) {
+      return res.status(404).json({ message: "Laundry business not found" });
+    }
+
+    const [order] = await db
+      .select()
+      .from(orders)
+      .where(and(eq(orders.businessId, business.id), eq(orders.orderNumber, orderNumber)))
+      .limit(1);
+    if (!order) {
+      return res.status(404).json({ message: "Order not found" });
+    }
+
+    let billNumber: string | null = null;
+    const orderPaidAmount = parseFloat(order.paidAmount || "0");
+    const orderTotalAmount = parseFloat(order.adjustedTotal ?? order.finalAmount ?? order.totalAmount ?? "0");
+    let billIsPaid = orderPaidAmount >= orderTotalAmount && orderTotalAmount > 0;
+    let billPaidAmount = order.paidAmount;
+    let billTotalAmount = order.adjustedTotal ?? order.finalAmount ?? order.totalAmount;
+    let billDiscountAmount: string | null = null;
+    let billOriginalAmount: string | null = null;
+    if (order.billId) {
+      const [bill] = await db
+        .select()
+        .from(bills)
+        .where(and(eq(bills.businessId, business.id), eq(bills.id, order.billId)))
+        .limit(1);
+      if (bill) {
+        billNumber = bill.referenceNumber || null;
+        billIsPaid = bill.isPaid ?? billIsPaid;
+        billPaidAmount = bill.paidAmount ?? order.paidAmount;
+        billTotalAmount = bill.amount ?? order.finalAmount ?? order.totalAmount;
+        billDiscountAmount = bill.discountAmount || null;
+        billOriginalAmount = bill.originalAmount || null;
+      }
+    }
+
+    res.json({
+      orderNumber: order.orderNumber,
+      items: order.items,
+      status: order.status,
+      entryDate: order.entryDate,
+      deliveryType: order.deliveryType,
+      tagDone: order.tagDone,
+      washingDone: order.washingDone,
+      packingDone: order.packingDone,
+      packingDate: order.packingDate,
+      delivered: order.delivered,
+      deliveryBy: removeBulkIndicator(order.deliveryBy),
+      deliveryDate: order.deliveryDate,
+      urgent: order.urgent,
+      expectedDeliveryAt: order.expectedDeliveryAt,
+      deliveryPhotos: order.deliveryPhotos || [],
+      deliveryPhoto: order.deliveryPhoto,
+      isPaid: billIsPaid,
+      paidAmount: billPaidAmount,
+      totalAmount: billTotalAmount,
+      billNumber,
+      discountAmount: billDiscountAmount,
+      originalAmount: billOriginalAmount,
+      business: await getPublicBusinessTrackingProfile(business.id),
     });
   });
 
