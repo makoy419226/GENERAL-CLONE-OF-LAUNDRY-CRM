@@ -16,7 +16,7 @@ import {
 } from "@/components/ui/dialog";
 import { Printer, X, Edit, DollarSign } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { formatCompanyPhoneLine, getCompanyAddressLines, useCompanyContactInfo } from "@/lib/companyContact";
+import { formatCompanyPhoneLine, getCompanyAddressLines, getWorkspaceLogoUrl, useCompanyContactInfo } from "@/lib/companyContact";
 import type { Order, Client, Product } from "@shared/schema";
 import logoImage from "@/assets/images/lwl-logo.png";
 
@@ -38,6 +38,7 @@ export function OrderReceipt({ order, client, onClose, embedded }: OrderReceiptP
   const [adjusting, setAdjusting] = useState(false);
   const { toast } = useToast();
   const { companyContact } = useCompanyContactInfo();
+  const workspaceLogoUrl = getWorkspaceLogoUrl(logoImage);
   const companyAddressLines = getCompanyAddressLines(companyContact);
   const companyPhoneLine = formatCompanyPhoneLine(companyContact);
 
@@ -106,9 +107,9 @@ export function OrderReceipt({ order, client, onClose, embedded }: OrderReceiptP
         setLogoBase64(canvas.toDataURL("image/png"));
       }
     };
-    img.src = logoImage;
+    img.src = workspaceLogoUrl;
 
-  }, []);
+  }, [workspaceLogoUrl]);
 
   const parsedItems = useMemo(() => {
     if (!order.items) return [];
@@ -264,7 +265,7 @@ export function OrderReceipt({ order, client, onClose, embedded }: OrderReceiptP
       <div ref={receiptRef} className="p-6 receipt-container">
           <div className="header">
             <div className="logo">
-              <img src={logoBase64 || logoImage} alt="Company Logo" />
+              <img src={logoBase64 || workspaceLogoUrl} alt={`${companyContact.companyName} logo`} />
             </div>
             <div className="company-info">
               <div className="company-name" style={order.urgent ? { color: "#dc2626" } : {}}>{companyContact.companyName}</div>

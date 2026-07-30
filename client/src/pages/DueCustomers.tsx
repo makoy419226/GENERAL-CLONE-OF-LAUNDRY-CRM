@@ -53,6 +53,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { formatCompanyAddressSingleLine, formatCompanyPhoneLine, useCompanyContactInfo } from "@/lib/companyContact";
 import { format, isAfter, isSameDay, startOfMonth, startOfYear } from "date-fns";
 import type { Bill, Client, Order, Product } from "@shared/schema";
 
@@ -318,6 +319,7 @@ type DueBillTimePeriod =
   | "custom";
 
 export default function DueCustomers() {
+  const { companyContact } = useCompanyContactInfo();
   const { toast } = useToast();
   const isMobile = useIsMobile();
   const { data: clients, isLoading: clientsLoading } = useClients();
@@ -998,7 +1000,9 @@ export default function DueCustomers() {
 
   const sendWhatsAppReminder = (client: Client) => {
     const pendingBillAmount = pendingBillsByClient[client.id]?.amount || 0;
-    const message = `Dear ${client.name},%0A%0AThis is a friendly reminder that you have an outstanding balance of AED ${pendingBillAmount.toFixed(2)} at Liquid Washes Laundry.%0A%0APlease visit us at your earliest convenience to settle your account.%0A%0AThank you!%0A%0ALiquid Washes Laundry%0ACentra Market D/109, Al Dhanna City%0AAl Ruwais, Abu Dhabi-UAE`;
+    const message = encodeURIComponent(
+      `Dear ${client.name},\n\nThis is a friendly reminder that you have an outstanding balance of AED ${pendingBillAmount.toFixed(2)} at ${companyContact.companyName}.\n\nPlease visit us at your earliest convenience to settle your account.\n\nThank you!\n\n${companyContact.companyName}\n${formatCompanyAddressSingleLine(companyContact)}\n${formatCompanyPhoneLine(companyContact)}`,
+    );
     window.open(
       `https://wa.me/${client.phone?.replace(/[^0-9]/g, "")}?text=${message}`,
       "_blank",

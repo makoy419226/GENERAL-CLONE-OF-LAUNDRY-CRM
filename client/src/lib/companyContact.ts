@@ -37,6 +37,28 @@ const normalizeText = (value: unknown, fallback: string | null = null) => {
   return trimmed || fallback;
 };
 
+const getStoredWorkspaceIdentity = () => {
+  try {
+    return JSON.parse(localStorage.getItem("user") || "null") as {
+      businessId?: number | null;
+      businessName?: string | null;
+      businessLogoUrl?: string | null;
+    } | null;
+  } catch {
+    return null;
+  }
+};
+
+export const getWorkspaceLogoUrl = (fallback: string) =>
+  normalizeText(getStoredWorkspaceIdentity()?.businessLogoUrl, fallback) || fallback;
+
+const withStoredWorkspaceName = (contact: CompanyContactInfo) => ({
+  ...contact,
+  companyName:
+    normalizeText(getStoredWorkspaceIdentity()?.businessName, contact.companyName) ||
+    contact.companyName,
+});
+
 export const normalizeCompanyContactInfo = (
   data?: Partial<CompanyContactInfo> | null,
 ): CompanyContactInfo => ({
@@ -66,7 +88,7 @@ export const useCompanyContactInfo = () => {
     queryKey: ["/api/company-contact"],
   });
   const companyContact = useMemo(
-    () => normalizeCompanyContactInfo(query.data),
+    () => withStoredWorkspaceName(normalizeCompanyContactInfo(query.data)),
     [query.data],
   );
 
@@ -83,7 +105,7 @@ export const fetchCompanyContactInfo = async (): Promise<CompanyContactInfo> => 
     });
     if (!response.ok) return DEFAULT_COMPANY_CONTACT;
     const data = await response.json();
-    return normalizeCompanyContactInfo(data);
+    return withStoredWorkspaceName(normalizeCompanyContactInfo(data));
   } catch {
     return DEFAULT_COMPANY_CONTACT;
   }

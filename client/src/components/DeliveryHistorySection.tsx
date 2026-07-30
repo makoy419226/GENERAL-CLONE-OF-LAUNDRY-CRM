@@ -23,6 +23,7 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
+import { getWorkspaceLogoUrl, useCompanyContactInfo } from "@/lib/companyContact";
 import logoImage from "@/assets/images/lwl-logo.png";
 import type { Client, Order } from "@shared/schema";
 
@@ -59,6 +60,8 @@ export function DeliveryHistorySection({
   const isPanel = variant === "panel";
   const [deliveryLogPeriod, setDeliveryLogPeriod] = useState<DeliveryLogPeriod>("daily");
   const [logoBase64, setLogoBase64] = useState("");
+  const { companyContact } = useCompanyContactInfo();
+  const workspaceLogoUrl = getWorkspaceLogoUrl(logoImage);
 
   const uaeOffsetMs = 4 * 60 * 60 * 1000;
 
@@ -84,8 +87,8 @@ export function DeliveryHistorySection({
       ctx.drawImage(img, 0, 0);
       setLogoBase64(canvas.toDataURL("image/png"));
     };
-    img.src = logoImage;
-  }, []);
+    img.src = workspaceLogoUrl;
+  }, [workspaceLogoUrl]);
 
   const formatDateInputValue = (date: Date) => format(date, "yyyy-MM-dd");
 
@@ -290,7 +293,7 @@ export function DeliveryHistorySection({
         }
         doc.setFont("helvetica", "bold");
         doc.setFontSize(12);
-        doc.text("Liquide Washes Laundry", headerTextX, 11);
+        doc.text(companyContact.companyName, headerTextX, 11);
         doc.setFontSize(10);
         doc.text(title, headerTextX, 17);
         doc.setFont("helvetica", "normal");

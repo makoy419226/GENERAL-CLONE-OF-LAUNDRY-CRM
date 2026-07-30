@@ -61,6 +61,7 @@ import {
   escapeHtml,
   formatCompanyAddressSingleLine,
   formatCompanyPhoneLine,
+  getWorkspaceLogoUrl,
   useCompanyContactInfo,
 } from "@/lib/companyContact";
 import {
@@ -705,6 +706,7 @@ export default function Clients() {
   const { mutate: deleteClient } = useDeleteClient();
   const { toast } = useToast();
   const { companyContact } = useCompanyContactInfo();
+  const workspaceLogoUrl = getWorkspaceLogoUrl(logoImage);
   const companyAddressLine = formatCompanyAddressSingleLine(companyContact);
   const companyPhoneLine = formatCompanyPhoneLine(companyContact);
 
@@ -1877,7 +1879,7 @@ export default function Clients() {
       <div style="font-family: Arial, sans-serif; padding: 30px; max-width: 800px; margin: 0 auto;">
         <div style="text-align: center; margin-bottom: 30px; border-bottom: 3px solid #1e88e5; padding-bottom: 20px;">
           <div style="display: flex; justify-content: center; margin-bottom: 10px;">
-            <img src="${logoImage}" alt="Logo" style="max-width: 180px; height: auto;" />
+            <img src="${workspaceLogoUrl}" alt="${escapeHtml(companyContact.companyName)} logo" style="max-width: 180px; height: auto;" />
           </div>
           <p style="margin: 8px 0 0 0; font-size: 14px; color: #666;">${escapeHtml(companyAddressLine)}</p>
         </div>
@@ -2171,7 +2173,7 @@ export default function Clients() {
       <div style="font-family: Arial, sans-serif; padding: 30px; max-width: 900px; margin: 0 auto;">
         <div style="text-align: center; margin-bottom: 30px; border-bottom: 3px solid #1e88e5; padding-bottom: 20px;">
           <div style="display: flex; justify-content: center; margin-bottom: 10px;">
-            <img src="${logoImage}" alt="Logo" style="max-width: 180px; height: auto;" />
+            <img src="${workspaceLogoUrl}" alt="${escapeHtml(companyContact.companyName)} logo" style="max-width: 180px; height: auto;" />
           </div>
           <p style="margin: 8px 0 0 0; font-size: 14px; color: #666;">${escapeHtml(companyAddressLine)}</p>
         </div>
@@ -5579,7 +5581,7 @@ export default function Clients() {
                             </head>
                             <body>
                               <div style="text-align: center; margin-bottom: 20px; border-bottom: 3px solid #1e88e5; padding-bottom: 15px;">
-                                <img src="${logoImage}" alt="Logo" style="max-width: 150px; height: auto;" />
+                                <img src="${workspaceLogoUrl}" alt="${escapeHtml(companyContact.companyName)} logo" style="max-width: 150px; height: auto;" />
                                 <p style="margin: 8px 0 0 0; font-size: 12px; color: #666;">${escapeHtml(companyAddressLine)}</p>
                               </div>
                               

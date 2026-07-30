@@ -43,6 +43,7 @@ import {
   Printer,
 } from "lucide-react";
 import { format } from "date-fns";
+import { useCompanyContactInfo } from "@/lib/companyContact";
 import { useToast } from "@/hooks/use-toast";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -331,6 +332,7 @@ const formatDeliveryBillDate = (value?: string | Date | null) => {
 };
 
 export default function DeliveryDashboard() {
+  const { companyContact } = useCompanyContactInfo();
   const { toast } = useToast();
   const isMobile = useIsMobile();
   const [, setLocation] = useLocation();
@@ -1049,19 +1051,19 @@ export default function DeliveryDashboard() {
               >
                 <span className="flex items-center gap-2">
                   <Phone className="h-3.5 w-3.5" />
-                  <span>Phone: +971 56 338 0001</span>
+                  <span>Phone: {companyContact.mobilePhone || "-"}</span>
                 </span>
                 <span className="flex items-center gap-2">
                   <Mail className="h-3.5 w-3.5" />
-                  <span>Email: info@lwl.ae</span>
+                  <span>Email: {companyContact.email || "-"}</span>
                 </span>
                 <span className="flex items-center gap-2">
                   <Globe className="h-3.5 w-3.5" />
-                  <span>www.lwl.ae</span>
+                  <span>{companyContact.website || "-"}</span>
                 </span>
                 <span className="flex items-center gap-2">
                   <Phone className="h-3.5 w-3.5" />
-                  <span>Tel: 026 815 824</span>
+                  <span>Tel: {companyContact.telephone || "-"}</span>
                 </span>
               </div>
             ))}

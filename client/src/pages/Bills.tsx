@@ -95,6 +95,7 @@ import {
   formatCompanyPhoneLine,
   getCompanyAddressLines,
   getPublicTrackingUrl,
+  getWorkspaceLogoUrl,
   useCompanyContactInfo,
 } from "@/lib/companyContact";
 import { isEditableKeyboardShortcutTarget } from "@/lib/keyboardShortcuts";
@@ -1233,6 +1234,7 @@ export default function Bills() {
   const companyGroupsLoadMoreRef = useRef<HTMLDivElement | null>(null);
   const brokerGroupsLoadMoreRef = useRef<HTMLDivElement | null>(null);
   const [logoBase64, setLogoBase64] = useState<string>("");
+  const workspaceLogoUrl = getWorkspaceLogoUrl(logoImage);
 
   useEffect(() => {
     const img = new Image();
@@ -1247,8 +1249,8 @@ export default function Bills() {
         setLogoBase64(canvas.toDataURL("image/png"));
       }
     };
-    img.src = logoImage;
-  }, []);
+    img.src = workspaceLogoUrl;
+  }, [workspaceLogoUrl]);
 
   const [showCreatorPinDialog, setShowCreatorPinDialog] = useState(false);
   const [creatorPin, setCreatorPin] = useState("");
@@ -9830,12 +9832,12 @@ export default function Bills() {
               pointerEvents: "none",
               zIndex: 0,
             }}>
-              <img src={logoBase64 || logoImage} alt="" style={{ width: "350px", height: "auto" }} />
+              <img src={logoBase64 || workspaceLogoUrl} alt="" style={{ width: "350px", height: "auto" }} />
             </div>
             <div style={{ position: "relative", zIndex: 1 }}>
             <div className="text-center border-b pb-3 mb-3">
               <img 
-                src={logoBase64 || logoImage} 
+                src={logoBase64 || workspaceLogoUrl} 
                 alt={companyContact.companyName} 
                 style={{ width: '120px', height: 'auto', objectFit: 'contain', margin: '0 auto 10px' }}
               />

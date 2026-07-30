@@ -324,6 +324,7 @@ import {
   escapeHtml,
   formatCompanyPhoneLine,
   getCompanyAddressLines,
+  getWorkspaceLogoUrl,
   useCompanyContactInfo,
 } from "@/lib/companyContact";
 import { isEditableKeyboardShortcutTarget } from "@/lib/keyboardShortcuts";
@@ -1191,6 +1192,7 @@ export default function Orders() {
   const pdfReceiptRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
   const { companyContact } = useCompanyContactInfo();
+  const workspaceLogoUrl = getWorkspaceLogoUrl(logoImage);
   const companyAddressLines = getCompanyAddressLines(companyContact);
   const companyAddressHtml = companyAddressLines.map(escapeHtml).join("<br />");
   const companyPhoneLine = formatCompanyPhoneLine(companyContact);
@@ -1212,7 +1214,7 @@ export default function Orders() {
         setLogoBase64(dataURL);
       }
     };
-    img.src = logoImage;
+    img.src = workspaceLogoUrl;
 
     const tagImg = document.createElement("img");
     tagImg.crossOrigin = "anonymous";
@@ -1226,8 +1228,8 @@ export default function Orders() {
         setTagLogoBase64(canvas.toDataURL("image/png"));
       }
     };
-    tagImg.src = logoImage;
-  }, []);
+    tagImg.src = workspaceLogoUrl;
+  }, [workspaceLogoUrl]);
 
   const searchString = useSearch();
   const [, setLocation] = useLocation();

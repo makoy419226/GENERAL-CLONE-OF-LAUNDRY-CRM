@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { InvoiceItemDescription } from "@/components/InvoiceItemDescription";
 import { Printer, Download, X } from "lucide-react";
-import { formatCompanyPhoneLine, getCompanyAddressLines, getPublicTrackingUrl, useCompanyContactInfo } from "@/lib/companyContact";
+import { formatCompanyPhoneLine, getCompanyAddressLines, getPublicTrackingUrl, getWorkspaceLogoUrl, useCompanyContactInfo } from "@/lib/companyContact";
 import logoImage from "@/assets/images/lwl-logo.png";
 
 interface InvoiceProps {
@@ -38,6 +38,7 @@ export function Invoice({
   const trackingUrl = orderNumber ? getPublicTrackingUrl() : null;
   const invoiceRef = useRef<HTMLDivElement>(null);
   const { companyContact } = useCompanyContactInfo();
+  const workspaceLogoUrl = getWorkspaceLogoUrl(logoImage);
   const companyAddressLines = getCompanyAddressLines(companyContact);
 
   const handlePrint = () => {
@@ -140,7 +141,7 @@ export function Invoice({
 
         <div ref={invoiceRef} className="p-6 invoice-container">
           <div className="header">
-            <img src={logoImage} alt="Company Logo" className="logo" style={{ maxWidth: "80px", height: "auto", margin: "0 auto 8px", display: "block" }} />
+            <img src={workspaceLogoUrl} alt={`${companyContact.companyName} logo`} className="logo" style={{ maxWidth: "80px", height: "auto", margin: "0 auto 8px", display: "block" }} />
             <div className="company-name">{companyContact.companyName}</div>
             <div className="company-address">
               {companyAddressLines.map((line) => (
