@@ -7,16 +7,40 @@ import { drizzle, type NodePgDatabase } from "drizzle-orm/node-postgres";
 import { Pool, type PoolClient } from "pg";
 import * as schema from "@shared/schema";
 
-const applicationDatabaseUrl =
+const configuredDatabaseUrl =
   process.env.APP_DATABASE_URL ||
   process.env.DATABASE_URL ||
   process.env.POSTGRES_URL;
 
-if (!applicationDatabaseUrl) {
+if (!configuredDatabaseUrl) {
   throw new Error(
     "APP_DATABASE_URL, DATABASE_URL, or POSTGRES_URL must be set. For local Windows development, add DATABASE_URL to .env.windows.local.",
   );
 }
+
+function normalizeSupabaseConnectionUrl(databaseUrl: string): string {
+  try {
+    const parsedUrl = new URL(databaseUrl);
+    const isSupabaseHost =
+      parsedUrl.hostname.endsWith(".supabase.co") ||
+      parsedUrl.hostname.endsWith(".supabase.com");
+
+    if (!isSupabaseHost) {
+      return databaseUrl;
+    }
+
+    parsedUrl.searchParams.set("sslmode", "no-verify");
+    parsedUrl.searchParams.delete("sslrootcert");
+    parsedUrl.searchParams.delete("uselibpqcompat");
+    return parsedUrl.toString();
+  } catch {
+    return databaseUrl;
+  }
+}
+
+const applicationDatabaseUrl = normalizeSupabaseConnectionUrl(
+  configuredDatabaseUrl,
+);
 
 const pool = new Pool({
   connectionString: applicationDatabaseUrl,
