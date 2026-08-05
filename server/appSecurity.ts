@@ -41,12 +41,23 @@ export async function ensureAppSecuritySettingsTable(): Promise<void> {
       await db.execute(sql`
         CREATE TABLE IF NOT EXISTS app_security_settings (
           id SERIAL PRIMARY KEY,
+          business_id INTEGER,
           lockdown_enabled BOOLEAN NOT NULL DEFAULT FALSE,
           lockdown_reason TEXT NOT NULL DEFAULT 'Page lockdown for security reasons.',
           lockdown_at TIMESTAMP,
           lockdown_by TEXT,
           updated_at TIMESTAMP NOT NULL DEFAULT NOW()
         )
+      `);
+
+      await db.execute(sql`
+        ALTER TABLE app_security_settings
+        ADD COLUMN IF NOT EXISTS business_id INTEGER
+      `);
+
+      await db.execute(sql`
+        CREATE INDEX IF NOT EXISTS app_security_settings_business_id_idx
+        ON app_security_settings (business_id)
       `);
     })().catch((error) => {
       ensurePromise = null;

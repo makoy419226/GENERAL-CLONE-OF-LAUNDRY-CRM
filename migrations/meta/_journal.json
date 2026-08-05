@@ -57,6 +57,13 @@
       "when": 1781164800000,
       "tag": "0007_delivery_charge",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1785949800000,
+      "tag": "0008_app_security_business_scope",
+      "breakpoints": true
     }
   ]
 }
