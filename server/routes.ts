@@ -1881,11 +1881,12 @@ export async function registerRoutes(
     console.log("Startup migrations complete");
   }; // end runStartupMigrations
 
-  // Fire migrations in background - don't await so the server can start listening immediately
   if (runtimeSchemaMigrationsEnabled) {
-    runWithPlatformDatabase(runStartupMigrations).catch((err) =>
-      logStartupMigrationError("Migration error", err),
-    );
+    try {
+      await runWithPlatformDatabase(runStartupMigrations);
+    } catch (err) {
+      logStartupMigrationError("Migration error", err);
+    }
   }
 
   // Active session tracking (in-memory, stores userId -> lastActivity timestamp)
