@@ -8,11 +8,13 @@ import { Pool, type PoolClient } from "pg";
 import * as schema from "@shared/schema";
 
 const applicationDatabaseUrl =
-  process.env.APP_DATABASE_URL || process.env.DATABASE_URL;
+  process.env.APP_DATABASE_URL ||
+  process.env.DATABASE_URL ||
+  process.env.POSTGRES_URL;
 
 if (!applicationDatabaseUrl) {
   throw new Error(
-    "APP_DATABASE_URL or DATABASE_URL must be set. For local Windows development, add DATABASE_URL to .env.windows.local.",
+    "APP_DATABASE_URL, DATABASE_URL, or POSTGRES_URL must be set. For local Windows development, add DATABASE_URL to .env.windows.local.",
   );
 }
 
